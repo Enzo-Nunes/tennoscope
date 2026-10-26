@@ -19,6 +19,11 @@ see the difference.
 - **The Relics tab filters by era.** Pick Lith, Meso, Neo, Axi or Requiem to see only that
   era's relics, or Any to see them all again.
 
+### Fixed
+
+- **The reward overlay no longer covers squadmates' names.** It now sits about 80px lower at
+  1080p (15% further down), scaled to the screen height as before.
+
 ## [0.14.0] - 2026-10-26
 
 This is the first release of the [Enzo-Nunes fork](https://github.com/Enzo-Nunes/tennoscope).

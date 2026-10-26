@@ -20,6 +20,11 @@ pub struct WindowRect {
 /// The window hangs below the game's reward cards, so its extra height never covers them.
 const OVERLAY_HEIGHT: f32 = 180.0 / 1080.0;
 
+/// How far below the card block the overlay starts. Hanging it straight off the name row's
+/// measured underside still covered squadmates' names in play (2026-10-26), so it drops another
+/// 15% (80px at 1080p, still a fraction of height so it scales with the HUD).
+const OVERLAY_DROP: f32 = 80.0 / 1080.0;
+
 /// Place the overlay directly under the game's reward cards.
 ///
 /// The rectangle comes from `reward_ocr`'s calibrated card block rather than from proportions
@@ -60,7 +65,7 @@ pub fn reward_overlay_geometry(
         .unwrap_or_default();
     let y = screen_y
         + i32::try_from(
-            fraction(crate::reward_ocr::CARD_BLOCK_BOTTOM, screen_height).round() as i64,
+            fraction(crate::reward_ocr::CARD_BLOCK_BOTTOM + OVERLAY_DROP, screen_height).round() as i64,
         )
         .unwrap_or_default();
     OverlayGeometry {
