@@ -165,8 +165,10 @@ fn current_classification() -> (InstallKind, bool) {
 /// Beta-channel offer rule: default greater-than plus the equal-version case,
 /// so an RC install (which reports plain `X.Y.Z`) is offered the real stable.
 /// Frontend dedupes by feed `pub_date` so an installed RC is not re-offered.
+/// Dev builds bake their suffix in (`0.15.0-dev.7`), so for them equal means
+/// the feed is offering the running build: only a plain version gets the case.
 pub fn beta_offers(current: &semver::Version, update: &semver::Version) -> bool {
-    update >= current
+    update > current || (update == current && current.pre.is_empty())
 }
 
 fn feed_urls(feed: &str) -> Result<Vec<url::Url>, String> {
@@ -599,6 +601,17 @@ mod tests {
         assert!(beta_offers(&v("0.12.0"), &v("0.12.0")));
         assert!(beta_offers(&v("0.12.0"), &v("0.12.1")));
         assert!(!beta_offers(&v("0.12.1"), &v("0.12.0")));
+    }
+
+    #[test]
+    fn dev_builds_take_newer_dev_builds_and_the_release_but_never_themselves() {
+        assert!(!beta_offers(&v("0.15.0-dev.7"), &v("0.15.0-dev.7")));
+        assert!(beta_offers(&v("0.15.0-dev.7"), &v("0.15.0-dev.8")));
+        assert!(beta_offers(&v("0.15.0-dev.9"), &v("0.15.0-dev.10")));
+        assert!(!beta_offers(&v("0.15.0-dev.8"), &v("0.15.0-dev.7")));
+        assert!(beta_offers(&v("0.15.0-dev.7"), &v("0.15.0")));
+        // A stable install with the beta toggle on reaches dev builds by the default rule.
+        assert!(beta_offers(&v("0.14.0"), &v("0.15.0-dev.1")));
     }
 
     #[test]
