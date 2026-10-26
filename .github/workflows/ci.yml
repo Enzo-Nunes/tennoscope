@@ -58,22 +58,22 @@ jobs:
       # desktop already has every one -- which is why their absence showed up on a runner and not
       # in review. The list is the `-l` flags off the failing link line, not a guess.
       - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libxdo-dev \
-            libssl-dev \
-            libpipewire-0.3-dev \
-            libclang-dev \
-            libgbm-dev \
-            libegl-dev \
-            libwayland-dev \
-            libxcb1-dev \
-            tesseract-ocr \
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev
+            libgtk-3-dev
+            libayatana-appindicator3-dev
+            librsvg2-dev
+            libxdo-dev
+            libssl-dev
+            libpipewire-0.3-dev
+            libclang-dev
+            libgbm-dev
+            libegl-dev
+            libwayland-dev
+            libxcb1-dev
+            tesseract-ocr
             tesseract-ocr-eng
 
       # Ubuntu's compact tessdata_fast model misses a distro-specific production path. Pin Arch's
@@ -211,21 +211,21 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libxdo-dev \
-            libssl-dev \
-            libpipewire-0.3-dev \
-            libclang-dev \
-            libgbm-dev \
-            libegl-dev \
-            libwayland-dev \
-            libxcb1-dev \
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev
+            libgtk-3-dev
+            libayatana-appindicator3-dev
+            librsvg2-dev
+            libxdo-dev
+            libssl-dev
+            libpipewire-0.3-dev
+            libclang-dev
+            libgbm-dev
+            libegl-dev
+            libwayland-dev
+            libxcb1-dev
             libarchive-tools
 
       - uses: Swatinem/rust-cache@v2

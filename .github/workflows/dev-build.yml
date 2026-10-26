@@ -127,25 +127,25 @@ jobs:
       # pipewire's, not the app's: `subdir('po')` is not optional and needs msgfmt at configure
       # time.
       - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libxdo-dev \
-            libssl-dev \
-            libclang-dev \
-            libgbm-dev \
-            libegl-dev \
-            libwayland-dev \
-            libxcb1-dev \
-            libarchive-tools \
-            meson \
-            ninja-build \
-            gettext \
-            tesseract-ocr \
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev
+            libgtk-3-dev
+            libayatana-appindicator3-dev
+            librsvg2-dev
+            libxdo-dev
+            libssl-dev
+            libclang-dev
+            libgbm-dev
+            libegl-dev
+            libwayland-dev
+            libxcb1-dev
+            libarchive-tools
+            meson
+            ninja-build
+            gettext
+            tesseract-ocr
             tesseract-ocr-eng
 
       # 1.0.0 is the oldest 1.x release, which buys two things: it is past the inline-function
