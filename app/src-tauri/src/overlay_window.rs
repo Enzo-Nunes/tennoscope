@@ -22,8 +22,8 @@ const OVERLAY_HEIGHT: f32 = 180.0 / 1080.0;
 
 /// How far below the card block the overlay starts. Hanging it straight off the name row's
 /// measured underside still covered squadmates' names in play (2026-10-26), so it drops another
-/// 15% (80px at 1080p, still a fraction of height so it scales with the HUD).
-const OVERLAY_DROP: f32 = 80.0 / 1080.0;
+/// 15% of the screen height (162px at 1080p), scaling with the HUD like everything else here.
+const OVERLAY_DROP: f32 = 0.15;
 
 /// Place the overlay directly under the game's reward cards.
 ///

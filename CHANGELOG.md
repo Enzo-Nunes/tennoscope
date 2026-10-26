@@ -21,8 +21,8 @@ see the difference.
 
 ### Fixed
 
-- **The reward overlay no longer covers squadmates' names.** It now sits about 80px lower at
-  1080p (15% further down), scaled to the screen height as before.
+- **The reward overlay no longer covers squadmates' names.** It now sits 15% of the screen
+  height lower (162px at 1080p), scaled to the screen height as before.
 
 ## [0.14.0] - 2026-10-26
 
