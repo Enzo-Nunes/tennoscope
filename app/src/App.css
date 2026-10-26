@@ -82,7 +82,7 @@
 .office-role { font-family: var(--face-register); font-size: .56rem; letter-spacing: .18em; text-transform: uppercase; color: var(--platinum-deep); white-space: nowrap; }
 
 /* Row two is destination choice alone. Row three holds mutable runtime state and actions. Keeping
-   those concerns on separate lines guarantees that all seven destinations remain readable at the
+   those concerns on separate lines guarantees that all eight destinations remain readable at the
    shipped 1180px width rather than hiding behind a scrollbar with no visible affordance. */
 .masthead-work {
   min-width: 0;
@@ -158,9 +158,9 @@
 .stamp:active:not(:disabled) { box-shadow: var(--strike-deep); }
 .stamp:disabled { opacity: .45; cursor: wait; }
 
-/* Navigation as a full-width row of hallmark cartouches. Seven equal destinations fit without
+/* Navigation as a full-width row of hallmark cartouches. Eight equal destinations fit without
    horizontal scrolling at the regular desktop width. */
-.hallmark-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--hair); min-width: 0; }
+.hallmark-row { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: var(--hair); min-width: 0; }
 
 .punch {
   flex: none; padding: 1px 0 0; border: 0; border-radius: 0; background: var(--rule);
@@ -416,6 +416,13 @@
 .entry-body { display: flex; flex-direction: column; justify-content: center; gap: .5rem; min-width: 0; padding: var(--step) var(--step) var(--step) var(--tight); }
 .entry-cat { font-family: var(--face-register); font-size: .54rem; font-weight: 600; letter-spacing: .15em; text-transform: uppercase; color: var(--platinum-deep); }
 .entry-name { margin: 0; overflow: hidden; font-family: var(--face-mark); font-size: 1.05rem; font-weight: 700; letter-spacing: -.01em; line-height: 1.1; text-transform: uppercase; color: var(--platinum); text-overflow: ellipsis; white-space: nowrap; }
+
+/* A card the account does not hold is drawn dimmed: desaturated art, a plain well, a quieter
+   name. The state is still carried in words by the card's own "Missing" line; this only makes
+   the sheet scan faster. */
+.entry[data-held="false"] .entry-well img { filter: grayscale(1); opacity: .55; }
+.entry[data-held="false"] .entry-well { box-shadow: var(--strike-deep), inset 0 0 0 1px var(--rule); }
+.entry[data-held="false"] .entry-name { color: var(--platinum-dim); }
 
 /* Struck hallmarks. Colour never carries a state alone. */
 .marks { display: flex; flex-wrap: wrap; align-content: end; gap: var(--hair); }
@@ -966,8 +973,11 @@ svg.set-glyph { background: none; fill: currentColor; padding: .125rem; }
 @media (max-width: 980px) {
   .mark-head { grid-template-columns: 1fr; gap: var(--step); }
   .mark-head .prose { padding-bottom: 0; }
-  /* Seven equal cartouches start clipping their labels a little under 940px, so the navigation
-     turns into the scrolling strip here rather than at the compact breakpoint. */
+}
+
+/* Eight equal cartouches start clipping the longest label, Diagnostics, a little under 1070px, so
+   the navigation turns into the scrolling strip here rather than at the compact breakpoint. */
+@media (max-width: 1080px) {
   .masthead-work { overflow-x: auto; scrollbar-width: thin; }
   .hallmark-row { display: flex; width: max-content; }
 }
