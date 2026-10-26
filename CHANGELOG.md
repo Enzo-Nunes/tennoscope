@@ -21,6 +21,9 @@ see the difference.
 
 ### Fixed
 
+- **AppImages can update themselves.** The update panel said TennoScope could not replace its
+  own file wherever the AppImage lived, because it tested the running file, which Linux never
+  lets a program write to. It now tests the folder, which is what an update actually changes.
 - **The reward overlay no longer covers squadmates' names.** It now sits 15% of the screen
   height lower (162px at 1080p), scaled to the screen height as before.
 

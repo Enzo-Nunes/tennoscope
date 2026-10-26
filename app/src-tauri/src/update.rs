@@ -128,10 +128,28 @@ pub fn classify(
 pub fn updatable(kind: InstallKind, writable: bool) -> bool {
     matches!(kind, InstallKind::Appimage | InstallKind::PortableWin) && writable
 }
-/// Opening for write proves the file can be replaced. Mode bits lie for
-/// root-owned files (0644 carries write bits the process cannot use).
+/// Whether the updater can swap this AppImage out. It never writes into the
+/// file: it renames it aside and creates the new one at the same path, so
+/// what has to be writable is the directory. Opening the file itself for
+/// write is no test at all -- the kernel refuses that (ETXTBSY) for as long as
+/// the AppImage runs, which is always when this is asked. Creating a probe
+/// file proves the directory; mode bits would lie for root-owned ones.
 pub fn file_writable(path: &std::path::Path) -> bool {
-    std::fs::OpenOptions::new().write(true).open(path).is_ok()
+    let Some(dir) = path.parent().filter(|_| path.is_file()) else {
+        return false;
+    };
+    let probe = dir.join(format!(".tennoscope-update-probe-{}", std::process::id()));
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+    {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 fn current_classification() -> (InstallKind, bool) {
@@ -518,16 +536,24 @@ mod tests {
         assert!(up);
     }
 
+    // A read-only attribute on a Windows directory does not stop files being
+    // created in it, and AppImages are Linux-only anyway.
+    #[cfg(unix)]
     #[test]
     fn open_probe_decides_appimage_replaceability() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let writable = dir.path().join("writable.AppImage");
-        let locked = dir.path().join("locked.AppImage");
+        let open = tempfile::tempdir().expect("tempdir");
+        let sealed = tempfile::tempdir().expect("tempdir");
+        let writable = open.path().join("writable.AppImage");
+        let locked = sealed.path().join("locked.AppImage");
         std::fs::write(&writable, b"x").expect("write");
         std::fs::write(&locked, b"x").expect("write");
-        let mut permissions = std::fs::metadata(&locked).expect("meta").permissions();
+        // The updater renames the file aside and writes a new one, so it is
+        // the directory that has to refuse, not the file.
+        let mut permissions = std::fs::metadata(sealed.path())
+            .expect("meta")
+            .permissions();
         permissions.set_readonly(true);
-        std::fs::set_permissions(&locked, permissions).expect("chmod");
+        std::fs::set_permissions(sealed.path(), permissions).expect("chmod");
         let exe = Path::new("/tmp/.mount_X9y8Z7w/usr/bin/tennoscope");
         let (kind, up) = classify(
             exe,
@@ -545,8 +571,36 @@ mod tests {
             "linux",
             &[],
         );
+        let mut permissions = std::fs::metadata(sealed.path())
+            .expect("meta")
+            .permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        permissions.set_readonly(false);
+        std::fs::set_permissions(sealed.path(), permissions).expect("chmod back");
         assert_eq!(kind, InstallKind::Appimage);
         assert!(!up);
+        assert!(!super::file_writable(&open.path().join("missing.AppImage")));
+        // The probe leaves nothing behind.
+        assert_eq!(std::fs::read_dir(open.path()).expect("list").count(), 1);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn running_appimage_is_still_replaceable() {
+        // A running executable cannot be opened for write (ETXTBSY), which is
+        // what made every AppImage report itself unreplaceable.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let running = dir.path().join("running.AppImage");
+        std::fs::copy("/bin/sleep", &running).expect("copy sleep");
+        let mut child = std::process::Command::new(&running)
+            .arg("5")
+            .spawn()
+            .expect("spawn");
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let replaceable = super::file_writable(&running);
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(replaceable);
     }
     #[test]
     fn windows_custom_paths_stay_portable() {
