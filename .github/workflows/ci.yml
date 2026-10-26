@@ -26,7 +26,7 @@ env:
 jobs:
   rust:
     name: Rust
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
@@ -174,13 +174,13 @@ jobs:
 
   frontend:
     name: Frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
       # The pnpm version lives in app/package.json, not at the repo root, so the action has to be
       # pointed at it or it finds nothing to install.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: app/package.json
 
@@ -206,7 +206,7 @@ jobs:
     # tester logs are in.
     name: Kiosk debug artifact
     if: startsWith(github.ref, 'refs/heads/diagnostic/')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
@@ -235,7 +235,7 @@ jobs:
           shared-key: linux
           save-if: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: app/package.json
 
@@ -267,7 +267,7 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: tennoscope-debug-kiosk
           retention-days: 7

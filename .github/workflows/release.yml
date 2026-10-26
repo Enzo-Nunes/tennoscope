@@ -27,7 +27,7 @@ jobs:
   # gate at all, because it looks like one. This waits for a conclusion instead.
   gate:
     name: Require a green CI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       checks: read
@@ -133,7 +133,7 @@ jobs:
           shared-key: windows
           save-if: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: app/package.json
 
@@ -172,7 +172,7 @@ jobs:
       # The installer is unsigned: a code-signing certificate costs money this project does not
       # take. SmartScreen will warn on first run until the download builds reputation, which is
       # said in the release notes rather than left for the player to discover.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: windows-installer
           path: |
@@ -313,7 +313,7 @@ jobs:
           shared-key: linux
           save-if: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: app/package.json
 
@@ -361,7 +361,7 @@ jobs:
       # `upload-artifact` roots a multi-path artifact at the least common ancestor of its
       # globs, so with nothing else in the bundle directory this artifact is flat -- which
       # is the layout the `release` job's globs expect.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: linux-appimage
           path: |
@@ -422,7 +422,7 @@ jobs:
           shared-key: linux
           save-if: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: app/package.json
 
@@ -454,7 +454,7 @@ jobs:
       # -- `target/release/bundle` -- so the per-format subdirectories survive the trip. The
       # `.sig` files Tauri writes beside these two bundles are not uploaded: the updater feed
       # only ever carries the AppImage and the Windows installer (see `build-update-feed.sh`).
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: linux-bundles
           path: |
@@ -468,11 +468,11 @@ jobs:
   release:
     name: Draft release
     needs: [windows, appimage, bundles]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: artifacts
 
@@ -491,7 +491,7 @@ jobs:
 
       # A draft, not a publish. The release notes are written by hand from CHANGELOG.md and the
       # release goes out when the maintainer says so.
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           # Keep the user-facing title identifiable outside GitHub while spelling the version
           # exactly like the tag documented in RELEASING.md.
