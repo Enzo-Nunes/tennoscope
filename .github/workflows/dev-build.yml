@@ -263,7 +263,8 @@ jobs:
         run: |
           ./scripts/build-update-feed.sh --version "$VERSION" --tag "v$VERSION" \
             --artifacts target/release/bundle/appimage --out feeds
-          pip install --break-system-packages pynacl
+          # Jammy's pip predates --break-system-packages (and the rule it overrides).
+          python3 -m pip install --user pynacl
           ./scripts/verify-update-feed.sh --feeds feeds --artifacts target/release/bundle/appimage \
             --tauri-conf app/src-tauri/tauri.conf.json --expect beta
 
