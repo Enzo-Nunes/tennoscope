@@ -140,3 +140,16 @@ export const getVersionInfo = () => invoke<VersionInfo>('get_version_info')
 export const updateCheck = (feed: string) => invoke<CheckResult>('update_check', { feed })
 export const updateDownloadAndInstall = (feed: string, expectedVersion: string) =>
   invoke<UpdateSummary>('update_download_and_install', { feed, expectedVersion })
+
+export type Refinement = 'intact' | 'exceptional' | 'flawless' | 'radiant'
+export type PlanCurrency = 'platinum' | 'ducats'
+/** Chances are fractions, one per refinement in `Refinement` order. */
+export interface RelicRewardRow { name: string; chances: number[]; platinum: number | null; ducats: number | null; owned: number }
+/** `value` holds one entry per refinement, at the plan's squad size. */
+export interface RelicPlanRow { name: string; vaulted: boolean; owned: number[]; value: number[]; unvalued: number; rewards: RelicRewardRow[] }
+/** One held refinement of a relic, or Intact for a relic not held. `gain_per_100` is null at Radiant. */
+export interface RelicPlanEntry { relic: string; vaulted: boolean; refinement: Refinement; copies: number; value: number; radiant_value: number; gain_per_100: number | null }
+export interface RelicPlan { currency: PlanCurrency; squad: number; rows: RelicPlanRow[]; entries: RelicPlanEntry[] }
+export interface RelicPlanView { status: 'loading' | 'ready' | 'unavailable'; plan: RelicPlan | null; inventory_known: boolean }
+export interface RelicPlanSettings { currency: PlanCurrency; squad: number }
+export const getRelicPlan = (settings: RelicPlanSettings) => invoke<RelicPlanView>('get_relic_plan', { settings })

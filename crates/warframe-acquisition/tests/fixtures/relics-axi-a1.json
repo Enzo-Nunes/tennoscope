@@ -1,0 +1,247 @@
+[
+ {
+  "uniqueName": "/Lotus/Types/Game/Projections/T4VoidProjectionESilver",
+  "name": "Axi A1 Exceptional",
+  "vaulted": true,
+  "rewards": [
+   {
+    "rarity": "Uncommon",
+    "chance": 13,
+    "item": {
+     "name": "Akstiletto Prime Barrel"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 23.33,
+    "item": {
+     "name": "Trinity Prime Systems Blueprint"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 23.33,
+    "item": {
+     "name": "Fragor Prime Head"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 13,
+    "item": {
+     "name": "Dual Kamas Prime Handle"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 23.33,
+    "item": {
+     "name": "Braton Prime Stock"
+    }
+   },
+   {
+    "rarity": "Rare",
+    "chance": 4,
+    "item": {
+     "name": "Nikana Prime Blueprint"
+    }
+   }
+  ]
+ },
+ {
+  "uniqueName": "/Lotus/Types/Game/Projections/T4VoidProjectionEGold",
+  "name": "Axi A1 Flawless",
+  "vaulted": true,
+  "rewards": [
+   {
+    "rarity": "Uncommon",
+    "chance": 17,
+    "item": {
+     "name": "Akstiletto Prime Barrel"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 20,
+    "item": {
+     "name": "Trinity Prime Systems Blueprint"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 20,
+    "item": {
+     "name": "Fragor Prime Head"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 17,
+    "item": {
+     "name": "Dual Kamas Prime Handle"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 20,
+    "item": {
+     "name": "Braton Prime Stock"
+    }
+   },
+   {
+    "rarity": "Rare",
+    "chance": 6,
+    "item": {
+     "name": "Nikana Prime Blueprint"
+    }
+   }
+  ]
+ },
+ {
+  "uniqueName": "/Lotus/Types/Game/Projections/T4VoidProjectionEBronze",
+  "name": "Axi A1 Intact",
+  "vaulted": true,
+  "rewards": [
+   {
+    "rarity": "Uncommon",
+    "chance": 11,
+    "item": {
+     "name": "Akstiletto Prime Barrel"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 25.33,
+    "item": {
+     "name": "Trinity Prime Systems Blueprint"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 25.33,
+    "item": {
+     "name": "Fragor Prime Head"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 11,
+    "item": {
+     "name": "Dual Kamas Prime Handle"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 25.33,
+    "item": {
+     "name": "Braton Prime Stock"
+    }
+   },
+   {
+    "rarity": "Rare",
+    "chance": 2,
+    "item": {
+     "name": "Nikana Prime Blueprint"
+    }
+   }
+  ]
+ },
+ {
+  "uniqueName": "/Lotus/Types/Game/Projections/T4VoidProjectionEPlatinum",
+  "name": "Axi A1 Radiant",
+  "vaulted": true,
+  "rewards": [
+   {
+    "rarity": "Uncommon",
+    "chance": 20,
+    "item": {
+     "name": "Akstiletto Prime Barrel"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 16.67,
+    "item": {
+     "name": "Trinity Prime Systems Blueprint"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 16.67,
+    "item": {
+     "name": "Fragor Prime Head"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 20,
+    "item": {
+     "name": "Dual Kamas Prime Handle"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 16.67,
+    "item": {
+     "name": "Braton Prime Stock"
+    }
+   },
+   {
+    "rarity": "Rare",
+    "chance": 10,
+    "item": {
+     "name": "Nikana Prime Blueprint"
+    }
+   }
+  ]
+ },
+ {
+  "uniqueName": "/Lotus/Types/Game/Projections/T1VoidProjectionStyanaxPrimeDBronze",
+  "name": "Lith T14 Intact",
+  "vaulted": false,
+  "rewards": [
+   {
+    "rarity": "Rare",
+    "chance": 2,
+    "item": {
+     "name": "Trumna Prime Barrel"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 11,
+    "item": {
+     "name": "Perigale Prime Receiver"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 11,
+    "item": {
+     "name": "Quassus Prime Blueprint"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 25.33,
+    "item": {
+     "name": "Daikyu Prime Blueprint"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 25.33,
+    "item": {
+     "name": "Lavos Prime Chassis Blueprint"
+    }
+   },
+   {
+    "rarity": "Uncommon",
+    "chance": 25.33,
+    "item": {
+     "name": "Fang Prime Handle"
+    }
+   }
+  ]
+ }
+]

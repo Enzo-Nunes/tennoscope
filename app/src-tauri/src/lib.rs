@@ -42,6 +42,7 @@ pub mod market_account;
 pub mod monitor;
 mod overlay_window;
 mod preferences;
+mod relic_plan;
 pub mod report;
 pub mod reward_capture;
 mod reward_log;
@@ -2050,6 +2051,79 @@ fn get_kiosk_view(kiosk: State<'_, KioskState>) -> Option<KioskView> {
     kiosk.get()
 }
 
+/// The Relics tab's plan for the settings it shows: currency and squad size.
+///
+/// The first call starts loading the drop tables and answers `loading`; the tab asks again until
+/// they are in. Owned counts come from the saved collection whatever the access mode, so this
+/// needs no capability: it reads nothing Companion cannot.
+#[tauri::command]
+async fn get_relic_plan(
+    app: AppHandle,
+    state: State<'_, SharedRuntime>,
+    settings: relic_plan::PlanSettings,
+) -> Result<relic_plan::RelicPlanView, String> {
+    let shared = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        let plans = app.state::<relic_plan::RelicPlanState>();
+        let reference = match plans.lookup() {
+            relic_plan::Lookup::Ready(reference) => reference,
+            relic_plan::Lookup::Start => {
+                let app_data = shared
+                    .lock()
+                    .map_err(|_| "application state is unavailable".to_owned())?
+                    .app_data
+                    .clone();
+                let app = app.clone();
+                std::thread::spawn(move || {
+                    let reference = relic_plan::load_reference(&app_data);
+                    app.state::<relic_plan::RelicPlanState>().finish(reference);
+                });
+                return Ok(relic_plan::RelicPlanView::pending(
+                    relic_plan::PlanStatus::Loading,
+                ));
+            }
+            relic_plan::Lookup::Loading => {
+                return Ok(relic_plan::RelicPlanView::pending(
+                    relic_plan::PlanStatus::Loading,
+                ));
+            }
+            relic_plan::Lookup::Unavailable => {
+                return Ok(relic_plan::RelicPlanView::pending(
+                    relic_plan::PlanStatus::Unavailable,
+                ));
+            }
+        };
+        // Copied out under the lock and planned outside it: a plan walks every relic against the
+        // whole collection, and the monitor should not wait on that.
+        let (collection, prices, inventory_known) = {
+            let runtime = shared
+                .lock()
+                .map_err(|_| "application state is unavailable".to_owned())?;
+            (
+                runtime
+                    .core
+                    .collection_for_reconciliation()
+                    .map_err(|error| error.to_string())?,
+                runtime.core.collection_prices(),
+                runtime
+                    .core
+                    .latest_snapshot_meta()
+                    .map_err(|error| error.to_string())?
+                    .is_some(),
+            )
+        };
+        Ok(relic_plan::plan_view(
+            &reference,
+            &collection,
+            prices.as_deref(),
+            inventory_known,
+            settings,
+        ))
+    })
+    .await
+    .map_err(|_| "relic plan task failed".to_owned())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Thread panics otherwise die in whatever terminal spawned the dev server; the log is
@@ -2166,6 +2240,7 @@ pub fn run() {
             // The kiosk window's whole IPC surface: `get_kiosk_view` pulls whatever the poller
             // last published, so the cell exists from the start, empty until a kiosk opens.
             app.manage(kiosk_view::KioskState::default());
+            app.manage(relic_plan::RelicPlanState::default());
             if let Some(access_mode) = startup.access_mode {
                 start_collection_prices(Arc::clone(app.state::<SharedRuntime>().inner()));
                 if access_mode.policy().starts_monitor() {
@@ -2203,6 +2278,7 @@ pub fn run() {
             show_reward_overlay,
             hide_reward_overlay,
             get_kiosk_view,
+            get_relic_plan,
             market_status,
             market_sign_in,
             market_link_token,

@@ -679,7 +679,7 @@ describe('MVP desktop interface', () => {
     await screen.findByRole('heading', { name: 'Your collection' })
 
     const navigation = screen.getByRole('navigation', { name: 'Primary' })
-    expect(within(navigation).getAllByRole('button')).toHaveLength(6)
+    expect(within(navigation).getAllByRole('button')).toHaveLength(7)
     expect(within(navigation).queryByRole('button', { name: 'Refresh inventory' })).not.toBeInTheDocument()
     const operations = screen.getByRole('region', { name: 'Runtime operations' })
     expect(within(operations).getByRole('button', { name: 'Refresh inventory' })).toBeInTheDocument()

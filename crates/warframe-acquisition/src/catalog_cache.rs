@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::{CatalogIndex, RelicRewardIndex};
+use crate::{CatalogIndex, RelicDropTable, RelicRewardIndex};
 
 pub const WFCD_ALL_JSON_URL: &str = "https://api.warframestat.us/items";
 pub const WFCD_RELICS_JSON_URL: &str = "https://raw.githubusercontent.com/WFCD/warframe-items/81c893536dee6de23fbf114cf52d1b01d23bd65d/data/json/Relics.json";
@@ -120,6 +120,7 @@ struct Generation {
 
 pub struct RelicCatalogLoad {
     index: RelicRewardIndex,
+    drops: RelicDropTable,
     source: CatalogLoadSource,
     fetched_unix: u64,
 }
@@ -127,6 +128,11 @@ pub struct RelicCatalogLoad {
 impl RelicCatalogLoad {
     pub const fn index(&self) -> &RelicRewardIndex {
         &self.index
+    }
+
+    /// The same file read for its chances, which the planner ranks on.
+    pub const fn drops(&self) -> &RelicDropTable {
+        &self.drops
     }
 
     pub const fn source(&self) -> CatalogLoadSource {
@@ -227,13 +233,15 @@ impl RelicCatalogCache {
         now_unix: u64,
     ) -> Result<RelicCatalogLoad, CatalogCacheError> {
         if let Ok(bytes) = source.fetch() {
-            if let (Ok(index), Ok(catalog)) = (
+            if let (Ok(index), Ok(drops), Ok(catalog)) = (
                 RelicRewardIndex::from_wfcd_json(&bytes),
+                RelicDropTable::from_wfcd_json(&bytes),
                 serde_json::from_slice(&bytes),
             ) {
                 self.store(catalog, now_unix)?;
                 return Ok(RelicCatalogLoad {
                     index,
+                    drops,
                     source: CatalogLoadSource::Network,
                     fetched_unix: now_unix,
                 });
@@ -278,8 +286,11 @@ impl RelicCatalogCache {
             serde_json::to_vec(&generation.catalog).map_err(|_| CatalogCacheError::Unavailable)?;
         let index = RelicRewardIndex::from_wfcd_json(&catalog_bytes)
             .map_err(|_| CatalogCacheError::Unavailable)?;
+        let drops = RelicDropTable::from_wfcd_json(&catalog_bytes)
+            .map_err(|_| CatalogCacheError::Unavailable)?;
         Ok(RelicCatalogLoad {
             index,
+            drops,
             source: CatalogLoadSource::StaleCache,
             fetched_unix: generation.fetched_unix,
         })

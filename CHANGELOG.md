@@ -14,6 +14,17 @@ see the difference.
 
 ## [Unreleased]
 
+### Added
+
+- **A Relics tab shows which relics to open as they are and which to refine first.** One
+  table lists every refinement of a relic you hold, with the expected platinum or ducats of
+  opening it now, of opening it at Radiant, and the gain per 100 Void Traces of finishing it, at
+  a squad size of one to four where everyone runs the same relic and each player takes the best
+  reward shown. Sorting by gain puts the best use of your traces at the top and the relics that
+  lose value when refined at the bottom; sorting by value ranks what to open. Each row opens to
+  its rewards' chances and prices. The drop tables load on first use in every access mode,
+  Companion included.
+
 ## [0.13.1] - 2026-10-11
 
 ### Changed

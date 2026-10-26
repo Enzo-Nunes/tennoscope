@@ -1,4 +1,4 @@
-use warframe_acquisition::{CatalogIndex, RelicRewardIndex};
+use warframe_acquisition::{CatalogIndex, RelicDropTable, RelicRewardIndex};
 
 #[test]
 fn loaded_projection_paths_resolve_to_deduplicated_reward_needles() {
@@ -131,4 +131,88 @@ fn relic_quantity_prefix_resolves_the_underlying_catalog_item() {
         candidates[0].internal_paths(),
         [b"/Lotus/Types/Recipes/Components/FormaBlueprint".as_slice()]
     );
+}
+
+/// Axi A1 at all four refinements as WFCD publishes them, and Lith T14 at Intact alone.
+const AXI_A1: &[u8] = include_bytes!("fixtures/relics-axi-a1.json");
+
+#[test]
+fn drop_tables_keep_every_refinements_chances_and_paths() {
+    let table = RelicDropTable::from_wfcd_json(AXI_A1).unwrap();
+    let [axi] = table.relics() else {
+        panic!("expected one complete relic, got {:?}", table.relics());
+    };
+    assert_eq!(axi.name, "Axi A1");
+    assert!(axi.vaulted);
+    assert_eq!(
+        axi.paths,
+        [
+            "/Lotus/Types/Game/Projections/T4VoidProjectionEBronze",
+            "/Lotus/Types/Game/Projections/T4VoidProjectionESilver",
+            "/Lotus/Types/Game/Projections/T4VoidProjectionEGold",
+            "/Lotus/Types/Game/Projections/T4VoidProjectionEPlatinum",
+        ]
+    );
+    assert_eq!(axi.rewards.len(), 6);
+    let (_, rare) = axi
+        .rewards
+        .iter()
+        .find(|(name, _)| name == "Nikana Prime Blueprint")
+        .unwrap();
+    assert_chances(*rare, [0.02, 0.04, 0.06, 0.10]);
+    let (_, common) = axi
+        .rewards
+        .iter()
+        .find(|(name, _)| name == "Braton Prime Stock")
+        .unwrap();
+    assert_chances(*common, [0.2533, 0.2333, 0.20, 0.1667]);
+}
+
+/// Chances are published in percent and stored as fractions, so the division leaves float dust.
+fn assert_chances(actual: [f64; 4], expected: [f64; 4]) {
+    for (actual, expected) in actual.into_iter().zip(expected) {
+        assert!(
+            (actual - expected).abs() < 1e-9,
+            "{actual} is not {expected}"
+        );
+    }
+}
+
+#[test]
+fn a_relic_missing_a_refinement_is_dropped_rather_than_ranked() {
+    let table = RelicDropTable::from_wfcd_json(AXI_A1).unwrap();
+    assert!(table.relics().iter().all(|relic| relic.name != "Lith T14"));
+}
+
+#[test]
+fn a_table_whose_chances_do_not_add_up_is_dropped() {
+    let mut records: Vec<serde_json::Value> = serde_json::from_slice(AXI_A1).unwrap();
+    records[0]["rewards"][0]["chance"] = serde_json::json!(50);
+    let bytes = serde_json::to_vec(&records).unwrap();
+    assert!(
+        RelicDropTable::from_wfcd_json(&bytes)
+            .unwrap()
+            .relics()
+            .is_empty()
+    );
+}
+
+#[test]
+fn a_reward_listed_twice_keeps_both_chances() {
+    let mut records: Vec<serde_json::Value> = serde_json::from_slice(AXI_A1).unwrap();
+    for record in &mut records {
+        record["rewards"][0]["item"]["name"] = serde_json::json!("2X Forma Blueprint");
+        record["rewards"][1]["item"]["name"] = serde_json::json!("2X Forma Blueprint");
+    }
+    let bytes = serde_json::to_vec(&records).unwrap();
+    let table = RelicDropTable::from_wfcd_json(&bytes).unwrap();
+    let [axi] = table.relics() else {
+        panic!("the relic should survive a repeated reward");
+    };
+    let forma: Vec<_> = axi
+        .rewards
+        .iter()
+        .filter(|(name, _)| name == "2X Forma Blueprint")
+        .collect();
+    assert_eq!(forma.len(), 2);
 }

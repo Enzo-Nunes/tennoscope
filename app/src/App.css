@@ -82,7 +82,7 @@
 .office-role { font-family: var(--face-register); font-size: .56rem; letter-spacing: .18em; text-transform: uppercase; color: var(--platinum-deep); white-space: nowrap; }
 
 /* Row two is destination choice alone. Row three holds mutable runtime state and actions. Keeping
-   those concerns on separate lines guarantees that all six destinations remain readable at the
+   those concerns on separate lines guarantees that all seven destinations remain readable at the
    shipped 1180px width rather than hiding behind a scrollbar with no visible affordance. */
 .masthead-work {
   min-width: 0;
@@ -158,9 +158,9 @@
 .stamp:active:not(:disabled) { box-shadow: var(--strike-deep); }
 .stamp:disabled { opacity: .45; cursor: wait; }
 
-/* Navigation as a full-width row of hallmark cartouches. Six equal destinations fit without
+/* Navigation as a full-width row of hallmark cartouches. Seven equal destinations fit without
    horizontal scrolling at the regular desktop width. */
-.hallmark-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--hair); min-width: 0; }
+.hallmark-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--hair); min-width: 0; }
 
 .punch {
   flex: none; padding: 1px 0 0; border: 0; border-radius: 0; background: var(--rule);
@@ -966,6 +966,10 @@ svg.set-glyph { background: none; fill: currentColor; padding: .125rem; }
 @media (max-width: 980px) {
   .mark-head { grid-template-columns: 1fr; gap: var(--step); }
   .mark-head .prose { padding-bottom: 0; }
+  /* Seven equal cartouches start clipping their labels a little under 940px, so the navigation
+     turns into the scrolling strip here rather than at the compact breakpoint. */
+  .masthead-work { overflow-x: auto; scrollbar-width: thin; }
+  .hallmark-row { display: flex; width: max-content; }
 }
 
 @media (max-width: 900px) {
@@ -1489,3 +1493,27 @@ svg.set-glyph { background: none; fill: currentColor; padding: .125rem; }
 .update-channel summary { cursor: pointer; padding: .3em 0; min-height: 24px; }
 .update-channel .check-row { margin-top: .4em; }
 .capture-status:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Relic planner. The tables are the register's own grammar: hairline rules, register-face headings,
+   figures right-aligned so a column of values reads down its decimal points. */
+.relic-check { display: inline-flex; align-items: center; gap: var(--tight); font-size: .8rem; color: var(--platinum-dim); }
+.relic-table, .relic-rewards { width: 100%; border-collapse: collapse; font-size: .82rem; font-variant-numeric: tabular-nums; }
+.relic-table th, .relic-table td, .relic-rewards th, .relic-rewards td { padding: var(--tight) var(--step) var(--tight) 0; text-align: right; border-bottom: 1px solid var(--rule); }
+.relic-table th:first-child, .relic-rewards th:first-child { text-align: left; }
+.relic-table thead th, .relic-rewards thead th { font: 700 .58rem/1.3 var(--face-register); letter-spacing: .12em; text-transform: uppercase; color: var(--platinum-deep); }
+.relic-sort { padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.relic-sort:hover, .relic-table thead th[aria-sort] .relic-sort { color: var(--platinum); }
+.relic-sort:focus-visible { outline: 2px solid var(--platinum); outline-offset: 2px; }
+.relic-loss { color: var(--oxblood); }
+.relic-row { cursor: pointer; }
+.relic-row:hover { background: var(--plate); }
+.relic-name { padding: 0; font: inherit; font-weight: 600; color: inherit; text-align: left; background: none; border: 0; cursor: pointer; }
+.relic-name:focus-visible { outline: 2px solid var(--platinum); outline-offset: 2px; }
+.relic-vaulted { margin-left: var(--tight); font: 700 .52rem/1 var(--face-register); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: var(--gold-dim); }
+.relic-value .metal-mark { height: 1.05em; width: auto; margin-left: .2em; vertical-align: -.18em; }
+.relic-detail > td { padding: 0 0 var(--step) var(--step); background: var(--well); text-align: left; }
+.relic-rewards caption { caption-side: bottom; padding-top: var(--tight); text-align: left; font-size: .72rem; color: var(--platinum-deep); }
+.text-action { padding: 0; font: inherit; color: var(--platinum); text-decoration: underline; background: none; border: 0; cursor: pointer; }
+@media (max-width: 720px) {
+  .relic-table th, .relic-table td { padding-right: var(--tight); }
+}

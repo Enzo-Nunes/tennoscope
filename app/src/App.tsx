@@ -46,9 +46,10 @@ import { version as APP_VERSION } from '../package.json'
 import { UpdateMark, UpdatesSetting } from './UpdateSettings'
 import { reportBlockVisible } from './reportable'
 import { AccessSelector } from './AccessSelector'
+import { RelicPlanner } from './RelicPlanner'
 import { accessMode } from './access'
 
-type Page = 'collection' | 'rewards' | 'orders' | 'diagnostics' | 'settings' | 'about'
+type Page = 'collection' | 'relics' | 'rewards' | 'orders' | 'diagnostics' | 'settings' | 'about'
 type Ownership = 'all' | 'owned' | 'mastered' | 'missing' | 'tradeable'
 type Sort = 'name-asc' | 'quantity-desc' | 'category-asc' | 'platinum-desc' | 'ducats-desc'
 
@@ -90,6 +91,7 @@ function shortDumpDate(isoDate: string): string {
 
 const pageLabel: Record<Page, string> = {
   collection: 'Collection',
+  relics: 'Relics',
   rewards: 'Rewards',
   orders: 'Orders',
   diagnostics: 'Diagnostics',
@@ -104,6 +106,8 @@ const pageLabel: Record<Page, string> = {
 function Mark({ name, className = 'punch-glyph' }: { name: Page | 'refresh' | 'search'; className?: string }) {
   const paths = {
     collection: <><path d="M3 4h18M3 10h13M3 16h18M3 22h9"/></>,
+    // A relic's faceted shell, cracked open along its seam.
+    relics: <><path d="M8 2h8l5 6-9 14L3 8z"/><path d="M3 8h18M12 8v14"/></>,
     rewards: <><circle cx="12" cy="14.5" r="7.5"/><path d="M12 7V1.5M9 4h6"/></>,
     orders: <><path d="M3 3h18v6H3z"/><path d="M6 9v12h12V9M10 13h4"/></>,
     diagnostics: <><path d="M2 21h20M6 21 14 3M11 21 19 3"/></>,
@@ -459,7 +463,7 @@ function App() {
       </div>
       <div className="masthead-work">
         <nav className="hallmark-row" aria-label="Primary">
-          {(['collection', 'rewards', 'orders', 'diagnostics', 'settings', 'about'] as const).map(item => <button
+          {(['collection', 'relics', 'rewards', 'orders', 'diagnostics', 'settings', 'about'] as const).map(item => <button
             key={item}
             type="button"
             aria-label={pageLabel[item]}
@@ -508,6 +512,7 @@ function App() {
             return !current
           })
         }} onSell={ordersSell} onUpdate={ordersUpdate} ordersBusy={ordersBusy}/>}
+        {page === 'relics' && <RelicPlanner effectiveMode={effectiveMode}/>}
         {page === 'rewards' && <RewardPage view={view} effectiveMode={effectiveMode}/>}
         {page === 'orders' && <OrdersView
           account={view.market_account}

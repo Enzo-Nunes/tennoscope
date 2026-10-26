@@ -48,7 +48,7 @@ pub use market::{
 };
 pub use mastery::{Holdings, MasteryEvidence, MasteryLedger};
 pub use orchestrator::{AcquisitionFailure, InventoryAcquirer};
-pub use relic_catalog::RelicRewardIndex;
+pub use relic_catalog::{RelicDropTable, RelicDrops, RelicRewardIndex};
 pub use reward_memory::{
     RewardFingerprint, RewardHeapAddressOrder, RewardHit, RewardMemoryScanner, RewardNeedle,
     RewardRecordEvidence, RewardRecordPolicy, RewardRecordQuery, RewardRepresentation,
