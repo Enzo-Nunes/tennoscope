@@ -65,7 +65,11 @@ pub fn reward_overlay_geometry(
         .unwrap_or_default();
     let y = screen_y
         + i32::try_from(
-            fraction(crate::reward_ocr::CARD_BLOCK_BOTTOM + OVERLAY_DROP, screen_height).round() as i64,
+            fraction(
+                crate::reward_ocr::CARD_BLOCK_BOTTOM + OVERLAY_DROP,
+                screen_height,
+            )
+            .round() as i64,
         )
         .unwrap_or_default();
     OverlayGeometry {
