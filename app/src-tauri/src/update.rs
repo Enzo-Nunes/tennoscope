@@ -18,9 +18,9 @@ pub const CHANNEL: &str = match option_env!("TENNOSCOPE_CHANNEL") {
 };
 
 const STABLE_FEED: &str =
-    "https://github.com/Deftera186/tennoscope/releases/latest/download/latest.json";
+    "https://github.com/Enzo-Nunes/tennoscope/releases/latest/download/latest.json";
 const BETA_FEED: &str =
-    "https://github.com/Deftera186/tennoscope/releases/latest/download/latest-beta.json";
+    "https://github.com/Enzo-Nunes/tennoscope/releases/latest/download/latest-beta.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

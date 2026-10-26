@@ -17,7 +17,7 @@ use crate::{MarketError, MarketRequest, MarketResponse, MarketTransport, Method}
 pub const USER_AGENT: &str = concat!(
     "TennoScope/",
     env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/Deftera186/tennoscope)"
+    " (+https://github.com/Enzo-Nunes/tennoscope)"
 );
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);

@@ -7,7 +7,7 @@ use warframe_market::{MarketHttp, USER_AGENT};
 fn the_user_agent_names_this_application_and_its_home() {
     assert!(USER_AGENT.starts_with("TennoScope/"), "{USER_AGENT}");
     assert!(
-        USER_AGENT.contains("github.com/Deftera186/tennoscope"),
+        USER_AGENT.contains("github.com/Enzo-Nunes/tennoscope"),
         "{USER_AGENT}"
     );
 }

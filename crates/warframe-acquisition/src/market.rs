@@ -25,7 +25,7 @@ const MAX_ORDERS_BYTES: usize = 256 * 1024;
 const USER_AGENT: &str = concat!(
     "TennoScope/",
     env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/Deftera186/tennoscope)"
+    " (+https://github.com/Enzo-Nunes/tennoscope)"
 );
 
 /// warframe.market's slug for a reward name: lowercase, non-alphanumerics collapsed to underscore.

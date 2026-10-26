@@ -5,13 +5,25 @@
 **A free and open-source, Rust-based Warframe companion for Linux, Windows and the Steam Deck.
 No Overwolf, no account, no telemetry.**
 
-[![CI](https://github.com/Deftera186/tennoscope/actions/workflows/ci.yml/badge.svg)](https://github.com/Deftera186/tennoscope/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Deftera186/tennoscope)](https://github.com/Deftera186/tennoscope/releases/latest)
+[![CI](https://github.com/Enzo-Nunes/tennoscope/actions/workflows/ci.yml/badge.svg)](https://github.com/Enzo-Nunes/tennoscope/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Enzo-Nunes/tennoscope)](https://github.com/Enzo-Nunes/tennoscope/releases/latest)
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Platform: Linux | Windows | Steam Deck](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20Steam%20Deck-informational.svg)](#install)
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-dea584)](https://www.rust-lang.org/)
 
 </div>
+
+> [!NOTE]
+> **This is Enzo-Nunes's fork of [TennoScope](https://github.com/Deftera186/tennoscope).**
+> It adds features that are not in the original yet, starting with a relic planner, and
+> otherwise follows upstream. Bugs in this build belong
+> [here](https://github.com/Enzo-Nunes/tennoscope/issues), not upstream.
+>
+> **To switch from the original,** install this fork's build with the commands in
+> [Install](#install) below. It replaces the original in place and keeps your collection,
+> settings and warframe.market login. Updates then come from this fork. The original's
+> in-app updater cannot move you here, so the first install is manual, and the two cannot
+> be installed side by side.
 
 <div align="center">
 
@@ -103,12 +115,11 @@ no longer permits before the switch completes.
 
 | System | How |
 | --- | --- |
-| Windows 10 or 11 | [Installer](https://github.com/Deftera186/tennoscope/releases/latest) |
-| Debian, Ubuntu | `sudo apt install tenno-scope` from this project's [APT repository](docs/install.md#debian-ubuntu-fedora) |
-| Fedora | `sudo dnf copr enable deftera/tennoscope && sudo dnf install tennoscope` |
-| Arch-based, incl. Steam Deck | `curl -O https://raw.githubusercontent.com/Deftera186/tennoscope/main/packaging/arch-bin/PKGBUILD && makepkg -si` |
-| Gentoo | `games-util/tennoscope-bin` from the [`deftera`](https://github.com/Deftera186/deftera-overlay) overlay |
-| Any other Linux | [AppImage](https://github.com/Deftera186/tennoscope/releases/latest) |
+| Windows 10 or 11 | [Installer](https://github.com/Enzo-Nunes/tennoscope/releases/latest) |
+| Debian, Ubuntu | `sudo apt install ./TennoScope_*_amd64.deb` from the [latest release](https://github.com/Enzo-Nunes/tennoscope/releases/latest) |
+| Fedora | `sudo dnf install ./TennoScope-*.x86_64.rpm` from the [latest release](https://github.com/Enzo-Nunes/tennoscope/releases/latest) |
+| Arch-based | `curl -O https://raw.githubusercontent.com/Enzo-Nunes/tennoscope/main/packaging/arch-bin/PKGBUILD && makepkg -si` |
+| Steam Deck, any other Linux | [AppImage](https://github.com/Enzo-Nunes/tennoscope/releases/latest) |
 
 - **Windows:** use Borderless display mode in Warframe. Exclusive fullscreen prevents
   the overlay from appearing. SmartScreen will warn about the unsigned installer; choose

@@ -21,7 +21,7 @@ export function UpdateMark({ onOpen }: { onOpen: () => void }) {
 }
 
 function releaseTagUrl(version: string): string {
-  return `https://github.com/Deftera186/tennoscope/releases/tag/v${version}`
+  return `https://github.com/Enzo-Nunes/tennoscope/releases/tag/v${version}`
 }
 
 /**

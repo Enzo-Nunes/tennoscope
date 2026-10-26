@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Report privately through GitHub's [private vulnerability
-reporting](https://github.com/Deftera186/tennoscope/security/advisories/new). Please do not open a
+reporting](https://github.com/Enzo-Nunes/tennoscope/security/advisories/new). Please do not open a
 public issue for anything in the categories below.
 
 This is a single-maintainer hobby project. Expect an acknowledgement within a week and a fix when

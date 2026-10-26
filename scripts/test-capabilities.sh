@@ -65,7 +65,7 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 for entry in capability.get("permissions", []):
     if isinstance(entry, dict) and entry.get("identifier") == "opener:allow-open-url":
         urls = [rule.get("url", "") for rule in entry.get("allow", [])]
-        assert any("github.com/Deftera186/tennoscope" in url for url in urls), urls
+        assert any("github.com/Enzo-Nunes/tennoscope" in url for url in urls), urls
         break
 else:
     raise SystemExit("opener:allow-open-url entry missing")

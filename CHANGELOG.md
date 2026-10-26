@@ -14,6 +14,17 @@ see the difference.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-26
+
+This is the first release of the [Enzo-Nunes fork](https://github.com/Enzo-Nunes/tennoscope).
+
+### Changed
+
+- **Updates now come from this fork.** The in-app update check, the release notes link and
+  the bug report button all point at Enzo-Nunes/tennoscope, and updates are signed with
+  this fork's own key. Installing it over the original keeps your collection, settings and
+  warframe.market login.
+
 ### Added
 
 - **A Relics tab shows which relics to open as they are and which to refine first.** One
@@ -795,7 +806,8 @@ First release.
 - Raw inventory responses are validated in memory and are not persisted.
 - No telemetry, no analytics, no remote account, no secret persistence.
 
-[Unreleased]: https://github.com/Deftera186/tennoscope/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/Enzo-Nunes/tennoscope/releases/tag/v0.14.0
 [0.13.1]: https://github.com/Deftera186/tennoscope/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/Deftera186/tennoscope/compare/v0.12.1-rc1...v0.13.0
 [0.12.1-rc1]: https://github.com/Deftera186/tennoscope/compare/v0.12.0...v0.12.1-rc1

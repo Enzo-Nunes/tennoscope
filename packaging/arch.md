@@ -9,7 +9,7 @@ published.
 for anyone who just wants to run it:
 
 ```bash
-curl -O https://raw.githubusercontent.com/Deftera186/tennoscope/main/packaging/arch-bin/PKGBUILD
+curl -O https://raw.githubusercontent.com/Enzo-Nunes/tennoscope/main/packaging/arch-bin/PKGBUILD
 makepkg -si
 ```
 
@@ -19,7 +19,7 @@ Rust workspace, so it takes a while:
 
 ```bash
 sudo pacman -S --needed base-devel
-curl -O https://raw.githubusercontent.com/Deftera186/tennoscope/main/packaging/arch/PKGBUILD
+curl -O https://raw.githubusercontent.com/Enzo-Nunes/tennoscope/main/packaging/arch/PKGBUILD
 makepkg -si
 ```
 

@@ -4,30 +4,13 @@ How to install, run and build TennoScope. The [README](../README.md) has the sho
 version. Every option below gives you a `tennoscope` command and a desktop entry, except
 the AppImage, which is a single file you run directly.
 
-## Gentoo
-
-TennoScope is packaged in the [`deftera`](https://github.com/Deftera186/deftera-overlay)
-overlay, which is listed in the official Gentoo overlays database:
-
-```bash
-sudo emerge --ask app-eselect/eselect-repository
-sudo eselect repository enable deftera
-sudo emaint sync --repo deftera
-sudo emerge --ask games-util/tennoscope-bin
-```
-
-`tennoscope-bin` unpacks the released binary and installs in seconds.
-`games-util/tennoscope` builds from source instead; it needs `sys-apps/pnpm-bin` from
-`::guru` and a one-off `FEATURES="-network-sandbox"` because pnpm and cargo resolve
-their lockfiles during the build.
-
 ## Arch, Manjaro, EndeavourOS, CachyOS
 
 Any Arch-based distribution with `pacman` and `makepkg`. The recommended route
 repacks the release `.deb`, so it needs no toolchain and installs in seconds:
 
 ```bash
-curl -O https://raw.githubusercontent.com/Deftera186/tennoscope/main/packaging/arch-bin/PKGBUILD && makepkg -si
+curl -O https://raw.githubusercontent.com/Enzo-Nunes/tennoscope/main/packaging/arch-bin/PKGBUILD && makepkg -si
 ```
 
 The PKGBUILDs on `main` track the release being prepared and may not build until it is
@@ -37,7 +20,7 @@ To build from source instead, it compiles the full Rust workspace, so it takes a
 `base-devel` is all you need beforehand, since `makepkg -s` pulls the build dependencies itself:
 
 ```bash
-curl -O https://raw.githubusercontent.com/Deftera186/tennoscope/main/packaging/arch/PKGBUILD && makepkg -si
+curl -O https://raw.githubusercontent.com/Enzo-Nunes/tennoscope/main/packaging/arch/PKGBUILD && makepkg -si
 ```
 
 On a Steam Deck, `makepkg -si` needs SteamOS's read-only root disabled, and a system
@@ -54,19 +37,16 @@ paru -B .    # or: yay -B .
 
 ## Debian, Ubuntu, Fedora
 
-Debian and Ubuntu install from this project's APT repository, so updates arrive with
-everything else. The repository is built from stable releases, so it can lag the newest
-release:
+Download the `.deb` or the `.rpm` from the
+[latest release](https://github.com/Enzo-Nunes/tennoscope/releases/latest) and install it:
 
 ```bash
-curl -fsSL https://deftera186.github.io/tennoscope/key.asc | sudo gpg --dearmor -o /usr/share/keyrings/tennoscope.gpg
-echo "deb [signed-by=/usr/share/keyrings/tennoscope.gpg] https://deftera186.github.io/tennoscope stable main" | sudo tee /etc/apt/sources.list.d/tennoscope.list > /dev/null
-sudo apt update
-sudo apt install tenno-scope
+sudo apt install ./TennoScope_*_amd64.deb     # Debian, Ubuntu
+sudo dnf install ./TennoScope-*.x86_64.rpm    # Fedora
 ```
 
-Prereleases reach neither the pool nor `releases/latest`, so the manual download below is a
-stable release.
+This fork publishes no APT repository or COPR, so the package manager does not update it.
+The app's own update check still tells you when a new release is out.
 
 > [!NOTE]
 > **The `.deb` and the `.rpm` are built on Ubuntu 24.04**, so their binaries need glibc 2.39
@@ -75,30 +55,10 @@ stable release.
 > `version GLIBC_2.39 not found`. On those two, use the [AppImage](#anything-else-appimage),
 > which is built on Ubuntu 22.04 and references nothing past glibc 2.35.
 
-Fedora uses the [COPR](../packaging/copr/README.md):
-
-```bash
-sudo dnf copr enable deftera/tennoscope && sudo dnf install tennoscope
-```
-
-The COPR is submitted by hand, so it can lag the latest release. The `.rpm` on the latest
-stable release is the way around that lag:
-
-```bash
-sudo dnf install ./TennoScope-*.x86_64.rpm    # Fedora, without the COPR
-```
-
-Prefer manual downloads? The `.deb` is on the
-[latest release](https://github.com/Deftera186/tennoscope/releases/latest):
-
-```bash
-sudo apt install ./TennoScope_*_amd64.deb     # Debian, Ubuntu
-```
-
 ## Windows
 
 Download the `.exe` from the
-[latest release](https://github.com/Deftera186/tennoscope/releases/latest) and run it.
+[latest release](https://github.com/Enzo-Nunes/tennoscope/releases/latest) and run it.
 It installs for your user only, so there is no UAC prompt, and it carries its own copy of
 Tesseract. There is nothing else to install by hand. The installer fetches the Microsoft
 Edge WebView2 runtime itself on a machine that does not already have it, so the first

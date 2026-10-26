@@ -722,7 +722,7 @@ pub const DUMP_LOOKBACK_DAYS: u64 = 5;
 const USER_AGENT: &str = concat!(
     "TennoScope/",
     env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/Deftera186/tennoscope)"
+    " (+https://github.com/Enzo-Nunes/tennoscope)"
 );
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

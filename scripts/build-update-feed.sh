@@ -112,7 +112,7 @@ if [ -n "$notes_file" ]; then
 fi
 
 pub_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-repo="https://github.com/Deftera186/tennoscope"
+repo="https://github.com/Enzo-Nunes/tennoscope"
 
 export FEED_VERSION="$version" FEED_TAG="$tag" FEED_DATE="$pub_date" FEED_NOTES="$notes"
 export FEED_ENTRIES="$entries_tmp" FEED_OUT="$out" FEED_PRERELEASE="$is_prerelease" FEED_REPO="$repo"

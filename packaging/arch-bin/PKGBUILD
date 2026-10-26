@@ -1,10 +1,10 @@
-# Maintainer: Deftera186 <https://github.com/Deftera186/tennoscope/issues>
+# Maintainer: Enzo-Nunes <https://github.com/Enzo-Nunes/tennoscope/issues>
 pkgname=tennoscope-bin
-pkgver=0.13.1
+pkgver=0.14.0
 pkgrel=1
 pkgdesc='Local-first Linux Warframe collection and relic companion'
 arch=('x86_64')
-url='https://github.com/Deftera186/tennoscope'
+url='https://github.com/Enzo-Nunes/tennoscope'
 license=('GPL-3.0-only')
 provides=('tennoscope')
 conflicts=('tennoscope')

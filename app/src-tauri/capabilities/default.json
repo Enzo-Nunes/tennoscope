@@ -15,7 +15,7 @@
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
-    { "identifier": "opener:allow-open-url", "allow": [{ "url": "https://github.com/Deftera186/tennoscope/**" }] },
+    { "identifier": "opener:allow-open-url", "allow": [{ "url": "https://github.com/Enzo-Nunes/tennoscope/**" }] },
     "core:window:allow-start-dragging",
     { "identifier": "opener:allow-reveal-item-in-dir", "allow": [{ "path": "$APPDATA/reports/**" }] },
     "clipboard-manager:allow-write-text"

@@ -61,7 +61,7 @@ feed = {
     "platforms": {
         "linux-x86_64": {
             "signature": blob,
-            "url": "https://github.com/Deftera186/tennoscope/releases/download/v0.12.0/TennoScope-0.12.0-x86_64.AppImage",
+            "url": "https://github.com/Enzo-Nunes/tennoscope/releases/download/v0.12.0/TennoScope-0.12.0-x86_64.AppImage",
         }
     },
 }
@@ -90,7 +90,7 @@ python3 -c "
 import json
 p = '$test_root/feeds/latest.json'
 d = json.load(open(p))
-d['platforms']['linux-x86_64']['url'] = 'https://github.com/Deftera186/tennoscope/releases/download/v0.12.0/TennoScope-0.12.0-x86_64.AppImage'
+d['platforms']['linux-x86_64']['url'] = 'https://github.com/Enzo-Nunes/tennoscope/releases/download/v0.12.0/TennoScope-0.12.0-x86_64.AppImage'
 d['version'] = 'not-a-version'
 json.dump(d, open(p, 'w'))
 "
@@ -100,7 +100,7 @@ import json
 p = '$test_root/feeds/latest.json'
 d = json.load(open(p))
 d['version'] = '0.12.0'
-d['platforms']['linux-x86_64']['url'] = 'https://github.com/Deftera186/tennoscope/releases/download/v0.12.0/TennoScope-0.12.0-x86_64.AppImage'
+d['platforms']['linux-x86_64']['url'] = 'https://github.com/Enzo-Nunes/tennoscope/releases/download/v0.12.0/TennoScope-0.12.0-x86_64.AppImage'
 json.dump(d, open(p, 'w'))
 "
 check "--expect stable mismatch fails" sh -c "! sh '$script_dir/verify-update-feed.sh' --feeds '$test_root/feeds' --artifacts '$test_root/artifacts' --tauri-conf '$test_root/tauri.conf.json' --expect stable >/dev/null 2>&1"

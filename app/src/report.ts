@@ -2,7 +2,7 @@ import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener'
 import { collectReport, collectReportText, type CollectedReport } from './backend'
 
-export const ISSUE_URL = 'https://github.com/Deftera186/tennoscope/issues/new?template=bug_report.yml'
+export const ISSUE_URL = 'https://github.com/Enzo-Nunes/tennoscope/issues/new?template=bug_report.yml'
 
 export async function copyReport(): Promise<void> {
   await writeText(await collectReportText())
