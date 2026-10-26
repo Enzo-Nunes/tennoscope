@@ -14,11 +14,12 @@ see the difference.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-26
+
 ### Added
 
 - **The Relics tab filters by era.** Pick Lith, Meso, Neo, Axi or Requiem to see only that
   era's relics, or Any to see them all again.
-
 - **A Mastery tab lists every masterable item the account has yet to master.** Under Full
   access, once an inventory has been read and the item catalog has loaded, the tab shows
   mastery-eligible equipment the account has never mastered. What it holds but has not ranked,
@@ -841,7 +842,8 @@ First release.
 - Raw inventory responses are validated in memory and are not persisted.
 - No telemetry, no analytics, no remote account, no secret persistence.
 
-[Unreleased]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/Enzo-Nunes/tennoscope/releases/tag/v0.14.0
 [0.13.1]: https://github.com/Deftera186/tennoscope/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/Deftera186/tennoscope/compare/v0.12.1-rc1...v0.13.0
