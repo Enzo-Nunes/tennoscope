@@ -12,10 +12,12 @@ on:
     branches: [dev]
   workflow_dispatch:
 
-# A newer push supersedes an older build: only the newest dev build is worth publishing.
+# One build at a time, and never cancelled: on a busy day dev moves every few minutes, and
+# cancelling on each push meant no build ever got far enough to publish. GitHub keeps only the
+# newest pending run per group, so pushes that land mid-build collapse into one follow-up build.
 concurrency:
   group: ${{ github.workflow }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
