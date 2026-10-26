@@ -2,7 +2,8 @@ use std::{cell::Cell, fs};
 use tempfile::tempdir;
 use warframe_acquisition::{
     CatalogCache, CatalogCacheError, CatalogFetch, CatalogLoadSource, CatalogSource,
-    RelicCatalogCache, RelicCatalogSource, WFCD_ALL_JSON_URL,
+    RELIC_CATALOG_MAX_AGE_SECS, RelicCatalogCache, RelicCatalogSource, WFCD_ALL_JSON_URL,
+    WFCD_RELICS_JSON_URL,
 };
 
 const VALID: &[u8] = br#"[{"uniqueName":"/Lotus/Powersuits/Test/Test","name":"Test Frame","type":"Warframe","category":"Warframes","masterable":true}]"#;
@@ -11,6 +12,16 @@ const VALID_RELICS: &[u8] = br#"[{"uniqueName":"/Lotus/Types/Game/Projections/Te
 #[test]
 fn item_catalog_uses_the_supported_aggregate_endpoint() {
     assert_eq!(WFCD_ALL_JSON_URL, "https://api.warframestat.us/items");
+}
+
+#[test]
+fn relic_catalog_comes_from_the_live_api_not_a_pinned_revision() {
+    // A pinned revision froze the relic list, so relics released after it (Lith B12, Lith L8)
+    // never reached the Relics tab.
+    assert_eq!(
+        WFCD_RELICS_JSON_URL,
+        "https://api.warframestat.us/items/search/Relics?by=category"
+    );
 }
 
 struct Source {
@@ -257,4 +268,90 @@ fn fails_honestly_without_network_or_a_valid_cache() {
             )
             .is_err()
     );
+}
+
+fn relic_source(result: Result<Vec<u8>, CatalogFetch>) -> Source {
+    Source {
+        result,
+        calls: Cell::new(0),
+    }
+}
+
+const NEWER_RELICS: &[u8] = br#"[{"uniqueName":"/Lotus/Types/Game/Projections/TestBBronze","rewards":[{"item":{"name":"Baza Prime Stock"}}]}]"#;
+
+#[test]
+fn a_fresh_relic_cache_is_used_without_a_fetch() {
+    let dir = tempdir().unwrap();
+    let cache = RelicCatalogCache::new(dir.path().join("catalog"));
+    cache
+        .load(&relic_source(Ok(VALID_RELICS.to_vec())), 100)
+        .unwrap();
+
+    let source = relic_source(Ok(NEWER_RELICS.to_vec()));
+    let loaded = cache
+        .load_fresh(&source, 100 + RELIC_CATALOG_MAX_AGE_SECS - 1)
+        .unwrap();
+    assert_eq!(source.calls.get(), 0);
+    assert_eq!(loaded.source(), CatalogLoadSource::StaleCache);
+    assert_eq!(loaded.fetched_unix(), 100);
+}
+
+#[test]
+fn an_old_relic_cache_is_refetched_so_new_relics_appear() {
+    let dir = tempdir().unwrap();
+    let cache = RelicCatalogCache::new(dir.path().join("catalog"));
+    cache
+        .load(&relic_source(Ok(VALID_RELICS.to_vec())), 100)
+        .unwrap();
+
+    let now = 100 + RELIC_CATALOG_MAX_AGE_SECS;
+    let source = relic_source(Ok(NEWER_RELICS.to_vec()));
+    let loaded = cache.load_fresh(&source, now).unwrap();
+    assert_eq!(source.calls.get(), 1);
+    assert_eq!(loaded.source(), CatalogLoadSource::Network);
+    assert!(
+        loaded
+            .index()
+            .reward_names()
+            .any(|name| name == "Baza Prime Stock")
+    );
+    assert_eq!(cache.load_cached().unwrap().fetched_unix(), now);
+}
+
+#[test]
+fn an_old_relic_cache_still_serves_when_the_refetch_fails() {
+    let dir = tempdir().unwrap();
+    let cache = RelicCatalogCache::new(dir.path().join("catalog"));
+    cache
+        .load(&relic_source(Ok(VALID_RELICS.to_vec())), 100)
+        .unwrap();
+
+    let loaded = cache
+        .load_fresh(
+            &relic_source(Err(CatalogFetch::Unavailable)),
+            100 + RELIC_CATALOG_MAX_AGE_SECS,
+        )
+        .unwrap();
+    assert_eq!(loaded.source(), CatalogLoadSource::StaleCache);
+    assert_eq!(loaded.fetched_unix(), 100);
+}
+
+#[test]
+fn a_relic_cache_from_the_pinned_revision_is_refetched_however_new() {
+    let dir = tempdir().unwrap();
+    let cache = RelicCatalogCache::new(dir.path().join("catalog"));
+    cache
+        .load(&relic_source(Ok(VALID_RELICS.to_vec())), 100)
+        .unwrap();
+    // A generation written before the endpoint was recorded, as every 0.15 install has.
+    let path = dir.path().join("catalog/relic-generation.json");
+    let mut generation: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    generation.as_object_mut().unwrap().remove("endpoint");
+    fs::write(&path, serde_json::to_vec(&generation).unwrap()).unwrap();
+
+    let source = relic_source(Ok(NEWER_RELICS.to_vec()));
+    let loaded = cache.load_fresh(&source, 101).unwrap();
+    assert_eq!(source.calls.get(), 1);
+    assert_eq!(loaded.source(), CatalogLoadSource::Network);
 }

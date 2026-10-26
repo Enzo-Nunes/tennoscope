@@ -216,3 +216,29 @@ fn a_reward_listed_twice_keeps_both_chances() {
         .collect();
     assert_eq!(forma.len(), 2);
 }
+
+/// Lith B12 as `api.warframestat.us` served it on 2026-10-26 (descriptions and market ids cut).
+/// It was missing from the Relics tab because the app read an older pinned revision of WFCD's
+/// `Relics.json` that predates it.
+const LITH_B12: &[u8] = include_bytes!("fixtures/relics-lith-b12.json");
+
+#[test]
+fn a_relic_from_the_live_catalog_is_ranked() {
+    let table = RelicDropTable::from_wfcd_json(LITH_B12).unwrap();
+    let [lith] = table.relics() else {
+        panic!("Lith B12 should be in the table");
+    };
+    assert_eq!(lith.name, "Lith B12");
+    assert!(lith.vaulted);
+    assert_eq!(
+        lith.paths[0],
+        "/Lotus/Types/Game/Projections/T1VoidProjectionProteaIvaraVaultABronze"
+    );
+    assert_eq!(lith.rewards.len(), 6);
+    let (_, baza) = lith
+        .rewards
+        .iter()
+        .find(|(name, _)| name == "Baza Prime Stock")
+        .unwrap();
+    assert_eq!(*baza, [0.02, 0.04, 0.06, 0.10]);
+}

@@ -14,6 +14,15 @@ see the difference.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Relics tab lists every relic again.** Relics released since the app's relic data was last
+  updated, such as Lith B12 and Lith L8, were missing even with Only owned unticked: the drop
+  tables came from a fixed old copy of WFCD's relic list (771 relics), and a copy cached once was
+  never fetched again. The tables now come from the live WFCD API (798 relics on 2026-10-26),
+  and the cached copy is refreshed once it is a week old, falling back to it while offline. The
+  reward screen's relic list gets the same refresh.
+
 ## [0.15.0] - 2026-10-26
 
 ### Added

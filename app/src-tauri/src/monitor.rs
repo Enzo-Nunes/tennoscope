@@ -1299,10 +1299,13 @@ pub(crate) fn run(
         );
         poller
     };
+    // The path is copied out first: the load can fetch over the network, and the runtime lock
+    // must not be held for that.
     let relic_catalog = shared
         .lock()
         .ok()
-        .and_then(|runtime| load_relic_catalog(&runtime.app_data));
+        .map(|runtime| runtime.app_data.clone())
+        .and_then(|app_data| load_relic_catalog(&app_data));
     let mut reward_session =
         RewardSession::new(catalog, relic_catalog, reward_catalog, price_cache.clone());
     // EE.log reaches us seconds after the events it describes (measured at ~7.5s on 2026-07-27),
@@ -1521,13 +1524,15 @@ fn load_catalog(app_data: &Path) -> Option<CatalogIndex> {
 
 fn load_relic_catalog(app_data: &Path) -> Option<RelicRewardIndex> {
     let cache = RelicCatalogCache::new(app_data.join("catalog"));
-    if let Ok(catalog) = cache.load_cached() {
-        return Some(catalog.index().clone());
-    }
-    let source = WfcdRelicCatalogHttp::new().ok()?;
     let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
+    let Ok(source) = WfcdRelicCatalogHttp::new() else {
+        return cache
+            .load_cached()
+            .ok()
+            .map(|catalog| catalog.index().clone());
+    };
     cache
-        .load(&source, now)
+        .load_fresh(&source, now)
         .ok()
         .map(|catalog| catalog.index().clone())
 }

@@ -14,7 +14,17 @@ use thiserror::Error;
 use crate::{CatalogIndex, RelicDropTable, RelicRewardIndex};
 
 pub const WFCD_ALL_JSON_URL: &str = "https://api.warframestat.us/items";
-pub const WFCD_RELICS_JSON_URL: &str = "https://raw.githubusercontent.com/WFCD/warframe-items/81c893536dee6de23fbf114cf52d1b01d23bd65d/data/json/Relics.json";
+/// Every relic with its drop table, from the same live API as the item catalog.
+///
+/// This was a pinned revision of WFCD's `data/json/Relics.json`, which froze the relic list at
+/// that revision: relics added since, such as Lith B12, were missing from the Relics tab. The
+/// file on WFCD's master branch is no substitute, because its relics carry no rewards (checked
+/// 2026-10-26), while this endpoint serves the full tables.
+pub const WFCD_RELICS_JSON_URL: &str =
+    "https://api.warframestat.us/items/search/Relics?by=category";
+/// How long a cached relic catalog is used before the next load fetches it again. Relics arrive
+/// with game updates, so a week keeps new ones from staying missing for long.
+pub const RELIC_CATALOG_MAX_AGE_SECS: u64 = 7 * 24 * 60 * 60;
 // Raised from 64 MiB: the WFCD items catalog passed 64 MiB in October 2026.
 const MAX_CATALOG_BYTES: usize = 256 * 1024 * 1024;
 
@@ -116,6 +126,10 @@ struct Generation {
     fetched_unix: u64,
     catalog: serde_json::Value,
     content_hash: String,
+    /// The URL the catalog came from. A generation written before this was recorded, or from an
+    /// endpoint the app no longer uses, is refetched before it is trusted as fresh.
+    #[serde(default)]
+    endpoint: String,
 }
 
 pub struct RelicCatalogLoad {
@@ -185,6 +199,7 @@ impl CatalogCache {
             fetched_unix,
             catalog,
             content_hash,
+            endpoint: WFCD_ALL_JSON_URL.to_owned(),
         })
         .map_err(|_| CatalogCacheError::CacheWrite)?;
         let final_path = self.directory.join("catalog-generation.json");
@@ -261,6 +276,7 @@ impl RelicCatalogCache {
             fetched_unix,
             catalog,
             content_hash,
+            endpoint: WFCD_RELICS_JSON_URL.to_owned(),
         })
         .map_err(|_| CatalogCacheError::CacheWrite)?;
         AtomicFile::new(
@@ -271,7 +287,30 @@ impl RelicCatalogCache {
         .map_err(|_| CatalogCacheError::CacheWrite)
     }
 
+    /// The cached catalog while it is fresh, otherwise [`Self::load`]: a fetch that falls back
+    /// to the cache when the network fails. Fresh means fetched from [`WFCD_RELICS_JSON_URL`]
+    /// less than [`RELIC_CATALOG_MAX_AGE_SECS`] ago; without the refetch, a catalog cached once
+    /// would be used forever and never learn of a relic released after it.
+    pub fn load_fresh(
+        &self,
+        source: &dyn RelicCatalogSource,
+        now_unix: u64,
+    ) -> Result<RelicCatalogLoad, CatalogCacheError> {
+        if let Ok(generation) = self.read_generation() {
+            if generation.endpoint == WFCD_RELICS_JSON_URL
+                && now_unix.saturating_sub(generation.fetched_unix) < RELIC_CATALOG_MAX_AGE_SECS
+            {
+                return Self::parse_generation(generation);
+            }
+        }
+        self.load(source, now_unix)
+    }
+
     pub fn load_cached(&self) -> Result<RelicCatalogLoad, CatalogCacheError> {
+        Self::parse_generation(self.read_generation()?)
+    }
+
+    fn read_generation(&self) -> Result<Generation, CatalogCacheError> {
         let bytes = fs::read(self.directory.join("relic-generation.json"))
             .map_err(|_| CatalogCacheError::Unavailable)?;
         let generation: Generation =
@@ -282,6 +321,10 @@ impl RelicCatalogCache {
         {
             return Err(CatalogCacheError::Unavailable);
         }
+        Ok(generation)
+    }
+
+    fn parse_generation(generation: Generation) -> Result<RelicCatalogLoad, CatalogCacheError> {
         let catalog_bytes =
             serde_json::to_vec(&generation.catalog).map_err(|_| CatalogCacheError::Unavailable)?;
         let index = RelicRewardIndex::from_wfcd_json(&catalog_bytes)
