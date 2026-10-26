@@ -123,6 +123,24 @@ describe('RelicPlanner', () => {
     expect(relicCells()).toContain('Meso C1 Intact')
   })
 
+  it('narrows the table to one era, and back to every era with Any', async () => {
+    backend.getRelicPlan.mockResolvedValue(ready)
+    render(<RelicPlanner effectiveMode="full"/>)
+    await screen.findByRole('table', { name: 'Relics' })
+    const eras = within(screen.getByRole('group', { name: 'Relic era' }))
+    expect(eras.getByRole('button', { name: 'Any' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(eras.getByRole('button', { name: 'Lith' }))
+    expect(relicCells()).toEqual(['Lith B1 Intact'])
+
+    fireEvent.click(eras.getByRole('button', { name: 'Requiem' }))
+    expect(relicCells()).toEqual([])
+    expect(screen.getByText('No relics match.')).toBeInTheDocument()
+
+    fireEvent.click(eras.getByRole('button', { name: 'Any' }))
+    expect(relicCells()).toHaveLength(4)
+  })
+
   it('asks again with the squad and currency the player picks', async () => {
     backend.getRelicPlan.mockResolvedValue(ready)
     render(<RelicPlanner effectiveMode="full"/>)

@@ -14,6 +14,42 @@ see the difference.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-26
+
+### Added
+
+- **The Relics tab filters by era.** Pick Lith, Meso, Neo, Axi or Requiem to see only that
+  era's relics, or Any to see them all again.
+- **A Mastery tab lists every masterable item the account has yet to master.** Under Full
+  access, once an inventory has been read and the item catalog has loaded, the tab shows
+  mastery-eligible equipment the account has never mastered. What it holds but has not ranked,
+  and what it has never held (the WFCD catalog flagged 803 items masterable on 2026-10-10, of
+  which the app keeps those it can classify as frame, weapon, companion or vehicle). Progress
+  reads across the top, overall and per category, counting mastered items the account has since
+  sold the way the game's profile does; category chips filter, and the default order puts what
+  is in the arsenal first. The Collection tab still lists only what the account holds, and gains
+  an **Unmastered first** sort for the gear it does hold; on both tabs a card the account does
+  not hold is drawn dimmed. Operator Amps are absent, because the catalog flags none of them
+  masterable; a modular item built but never ranked (a Zaw, Kitgun, K-Drive, MOA or Hound) is
+  listed until it earns affinity; Founders items are listed like any other. Suggested and
+  implemented by [@NekoRem](https://github.com/NekoRem).
+
+### Fixed
+
+- **AppImages can update themselves.** The update panel said TennoScope could not replace its
+  own file wherever the AppImage lived, because it tested the running file, which Linux never
+  lets a program write to. It now tests the folder, which is what an update actually changes.
+- **The reward overlay no longer covers squadmates' names.** It now sits 15% of the screen
+  height lower (162px at 1080p), scaled to the screen height as before.
+- **The full test suite passes on every tesseract build.** The 16:10 reward-geometry test
+  asserted every card read at >= 0.9, which the combined legacy+LSTM `tessdata` that Arch and
+  Fedora ship misses by one character on `2X Forma Blueprint` (0.875), so those packages had to
+  skip the test. The floor is now 0.85, the same traineddata-independent value the three-card
+  geometry test already uses: deep enough in the gap between a true crop and a misplaced one
+  (0.90 at +-32px, 0.71-0.80 at +-48px) to still catch a fifth-of-a-card drift, while absorbing
+  the ~0.06 a one-character OCR difference costs. The Arch and COPR recipes run the whole suite
+  again.
+
 ## [0.14.0] - 2026-10-26
 
 This is the first release of the [Enzo-Nunes fork](https://github.com/Enzo-Nunes/tennoscope).
@@ -806,7 +842,8 @@ First release.
 - Raw inventory responses are validated in memory and are not persisted.
 - No telemetry, no analytics, no remote account, no secret persistence.
 
-[Unreleased]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/Enzo-Nunes/tennoscope/releases/tag/v0.14.0
 [0.13.1]: https://github.com/Deftera186/tennoscope/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/Deftera186/tennoscope/compare/v0.12.1-rc1...v0.13.0

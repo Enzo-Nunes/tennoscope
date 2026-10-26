@@ -5,11 +5,11 @@ on:
 
 jobs:
   label:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       issues: write
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v8
         with:
           script: |
             const body = context.payload.issue.body || '';

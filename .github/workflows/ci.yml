@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
   workflow_dispatch:
 
@@ -13,9 +13,14 @@ on:
 # it because another commit landed a minute later would fail the release for a reason that has
 # nothing to do with the release. Grouping main by SHA means each commit's run is its own group and
 # survives; branches and pull requests still collapse to the newest push.
+#
+# And on dev, where dev-build.yml's gate waits on this run for the same reason. There the running
+# CI is left to finish and pushes queue behind it: GitHub keeps only the newest pending run per
+# group, so five quick pushes run CI on the first and then on the fifth, and the dev builds for
+# those two commits each find a concluded run to read.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
 
 permissions:
   contents: read
@@ -26,7 +31,7 @@ env:
 jobs:
   rust:
     name: Rust
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
@@ -58,22 +63,22 @@ jobs:
       # desktop already has every one -- which is why their absence showed up on a runner and not
       # in review. The list is the `-l` flags off the failing link line, not a guess.
       - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libxdo-dev \
-            libssl-dev \
-            libpipewire-0.3-dev \
-            libclang-dev \
-            libgbm-dev \
-            libegl-dev \
-            libwayland-dev \
-            libxcb1-dev \
-            tesseract-ocr \
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev
+            libgtk-3-dev
+            libayatana-appindicator3-dev
+            librsvg2-dev
+            libxdo-dev
+            libssl-dev
+            libpipewire-0.3-dev
+            libclang-dev
+            libgbm-dev
+            libegl-dev
+            libwayland-dev
+            libxcb1-dev
+            tesseract-ocr
             tesseract-ocr-eng
 
       # Ubuntu's compact tessdata_fast model misses a distro-specific production path. Pin Arch's
@@ -174,13 +179,13 @@ jobs:
 
   frontend:
     name: Frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
       # The pnpm version lives in app/package.json, not at the repo root, so the action has to be
       # pointed at it or it finds nothing to install.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: app/package.json
 
@@ -206,26 +211,26 @@ jobs:
     # tester logs are in.
     name: Kiosk debug artifact
     if: startsWith(github.ref, 'refs/heads/diagnostic/')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
       - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libxdo-dev \
-            libssl-dev \
-            libpipewire-0.3-dev \
-            libclang-dev \
-            libgbm-dev \
-            libegl-dev \
-            libwayland-dev \
-            libxcb1-dev \
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev
+            libgtk-3-dev
+            libayatana-appindicator3-dev
+            librsvg2-dev
+            libxdo-dev
+            libssl-dev
+            libpipewire-0.3-dev
+            libclang-dev
+            libgbm-dev
+            libegl-dev
+            libwayland-dev
+            libxcb1-dev
             libarchive-tools
 
       - uses: Swatinem/rust-cache@v2
@@ -235,7 +240,7 @@ jobs:
           shared-key: linux
           save-if: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: app/package.json
 
@@ -267,7 +272,7 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: tennoscope-debug-kiosk
           retention-days: 7

@@ -1,0 +1,60 @@
+name: Install apt packages
+description: >-
+  apt-get install with the downloaded .debs kept in the Actions cache. The runners' Azure Ubuntu
+  mirror has had hours where it serves at tens of kB/s and the webkit and libclang packages time
+  out and restart, turning a 35-second step into 35 minutes. With the .debs cached, a run only
+  downloads what changed since the cache was saved, and stalled downloads give up after 30
+  seconds instead of apt's default of several minutes.
+inputs:
+  packages:
+    description: Whitespace-separated package names, installed with --no-install-recommends.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Configure apt
+      shell: bash
+      run: |
+        # Retry a stalled download quickly rather than waiting out the default timeout, and keep
+        # what was downloaded so the cache step below has something to save.
+        sudo tee /etc/apt/apt.conf.d/99tennoscope-ci > /dev/null <<'CONF'
+        Acquire::Retries "5";
+        Acquire::http::Timeout "30";
+        Acquire::https::Timeout "30";
+        APT::Keep-Downloaded-Packages "true";
+        Binary::apt::APT::Keep-Downloaded-Packages "true";
+        CONF
+        sudo rm -f /etc/apt/apt.conf.d/docker-clean
+        echo "APT_DEBS=$RUNNER_TEMP/apt-debs" >> "$GITHUB_ENV"
+        echo "APT_KEY=apt-$ImageOS-$(printf '%s\n' ${{ inputs.packages }} | sort | sha256sum | cut -c1-16)" >> "$GITHUB_ENV"
+
+    # The key names the image and the package list. The suffix is the set of .debs a run ended
+    # up with, so a restore takes the newest set for this list and a save only happens when the
+    # mirror moved a version and something new was downloaded.
+    - name: Restore cached packages
+      id: restore
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ env.APT_DEBS }}
+        key: ${{ env.APT_KEY }}-
+        restore-keys: ${{ env.APT_KEY }}-
+
+    - name: Install
+      shell: bash
+      run: |
+        mkdir -p "$APT_DEBS"
+        if compgen -G "$APT_DEBS/*.deb" > /dev/null; then
+          sudo cp "$APT_DEBS"/*.deb /var/cache/apt/archives/
+        fi
+        sudo apt-get update
+        sudo apt-get install --no-install-recommends -y ${{ inputs.packages }}
+        rm -f "$APT_DEBS"/*.deb
+        cp /var/cache/apt/archives/*.deb "$APT_DEBS"/ 2>/dev/null || true
+        echo "APT_SET=$(ls "$APT_DEBS" | sha256sum | cut -c1-16)" >> "$GITHUB_ENV"
+
+    - name: Save packages
+      if: steps.restore.outputs.cache-matched-key != format('{0}-{1}', env.APT_KEY, env.APT_SET)
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ env.APT_DEBS }}
+        key: ${{ env.APT_KEY }}-${{ env.APT_SET }}
