@@ -78,7 +78,6 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.stamp.outputs.version }}
-      stable_tag: ${{ steps.stamp.outputs.stable_tag }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
@@ -100,8 +99,10 @@ jobs:
 
       # The binary has to report its own dev version: the updater compares the feed against it,
       # so a build that said 0.14.0 would be offered every dev build forever, including itself.
-      # The base is the workspace version once dev has been bumped past the last stable
-      # release, and the next minor until then. The run number makes each build newer than
+      # The base is the workspace version once dev has been bumped past the last release, and
+      # the next minor until then. "Released" counts the tag, not just a published release:
+      # between pushing `v0.15.0` and publishing its draft, dev already carries 0.16 work, and
+      # a build stamped 0.15.0-dev.N would sort below 0.15.0 and be replaced by it. The run number makes each build newer than
       # the last (`-dev.10` sorts after `-dev.9`: semver compares numeric identifiers as
       # numbers).
       - name: Stamp the dev version
@@ -114,11 +115,14 @@ jobs:
             echo "no stable release found; the beta feed has nowhere to be served from" >&2
             exit 1
           fi
-          stable=${stable_tag#v}
-          highest=$(printf '%s\n%s\n' "$workspace" "$stable" | sort -V | tail -1)
-          if [ "$workspace" = "$stable" ] || [ "$highest" = "$stable" ]; then
-            major=${stable%%.*}
-            rest=${stable#*.}
+          released=${stable_tag#v}
+          if gh api "repos/${GH_REPO}/git/ref/tags/v${workspace}" --silent 2>/dev/null; then
+            released=$(printf '%s\n%s\n' "$workspace" "$released" | sort -V | tail -1)
+          fi
+          highest=$(printf '%s\n%s\n' "$workspace" "$released" | sort -V | tail -1)
+          if [ "$highest" = "$released" ]; then
+            major=${released%%.*}
+            rest=${released#*.}
             minor=${rest%%.*}
             base="$major.$((minor + 1)).0"
           else
@@ -134,8 +138,7 @@ jobs:
           grep -q "\"version\": \"$version\"" app/src-tauri/tauri.conf.json
           grep -q "\"version\": \"$version\"" app/package.json
           echo "version=$version" >>"$GITHUB_OUTPUT"
-          echo "stable_tag=$stable_tag" >>"$GITHUB_OUTPUT"
-          echo "building $version (beta feed served from $stable_tag)"
+          echo "building $version"
 
       # Everything but pipewire. Jammy's is 0.3.48, which predates `spa_meta_bitmap_is_valid`
       # becoming an inline function (pipewire 853c4783), and the libspa bindings this app
@@ -310,9 +313,25 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       VERSION: ${{ needs.appimage.outputs.version }}
-      STABLE_TAG: ${{ needs.appimage.outputs.stable_tag }}
     steps:
       - uses: actions/checkout@v5
+
+      # Read again here rather than taken from the build: a release published while this
+      # build ran moves `latest`, and the feed has to ride the release that serves it now. A
+      # build that release has overtaken would only be replaced by it, so it is not published.
+      - name: Find the release that serves the beta feed
+        run: |
+          set -eu
+          stable_tag=$(gh release list --exclude-pre-releases --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')
+          [ -n "$stable_tag" ] || { echo "no stable release found" >&2; exit 1; }
+          stable=${stable_tag#v}
+          # sort -V puts 0.15.0-dev.3 after 0.15.0, so compare the parts before the suffix.
+          base=${VERSION%%-*}
+          if [ "$(printf '%s\n%s\n' "$base" "$stable" | sort -V | tail -1)" = "$stable" ]; then
+            echo "$VERSION is not newer than the published $stable_tag; refusing to publish it" >&2
+            exit 1
+          fi
+          echo "STABLE_TAG=$stable_tag" >>"$GITHUB_ENV"
 
       - uses: actions/download-artifact@v7
         with:
