@@ -13,9 +13,14 @@ on:
 # it because another commit landed a minute later would fail the release for a reason that has
 # nothing to do with the release. Grouping main by SHA means each commit's run is its own group and
 # survives; branches and pull requests still collapse to the newest push.
+#
+# And on dev, where dev-build.yml's gate waits on this run for the same reason. There the running
+# CI is left to finish and pushes queue behind it: GitHub keeps only the newest pending run per
+# group, so five quick pushes run CI on the first and then on the fifth, and the dev builds for
+# those two commits each find a concluded run to read.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
 
 permissions:
   contents: read
