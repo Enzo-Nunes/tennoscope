@@ -14,6 +14,11 @@ see the difference.
 
 ## [Unreleased]
 
+### Added
+
+- **The Relics tab filters by era.** Pick Lith, Meso, Neo, Axi or Requiem to see only that
+  era's relics, or Any to see them all again.
+
 ## [0.14.0] - 2026-10-26
 
 This is the first release of the [Enzo-Nunes fork](https://github.com/Enzo-Nunes/tennoscope).

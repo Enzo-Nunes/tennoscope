@@ -7,6 +7,11 @@ const refinementLabel: Record<Refinement, string> = { intact: 'Intact', exceptio
 /** How long to wait before asking again while the drop tables load. The first load parses the item catalogue, which takes seconds. */
 const LOADING_RETRY_MS = 1500
 
+const ERAS = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem'] as const
+type Era = typeof ERAS[number]
+/** A relic's era is the first word of its name, as in "Axi A1" or "Requiem IV". */
+const eraOf = (relic: string) => relic.slice(0, relic.indexOf(' '))
+
 type SortKey = 'gain' | 'value' | 'radiant'
 interface Sort { key: SortKey; descending: boolean }
 
@@ -42,6 +47,7 @@ export function RelicPlanner({ effectiveMode }: { effectiveMode: AccessMode }) {
   const [squad, setSquad] = useState(1)
   const [search, setSearch] = useState('')
   const [onlyOwned, setOnlyOwned] = useState(true)
+  const [era, setEra] = useState<Era | null>(null)
   const [sort, setSort] = useState<Sort>({ key: 'gain', descending: true })
   const [expanded, setExpanded] = useState<string | null>(null)
   const [view, setView] = useState<RelicPlanView | null>(null)
@@ -70,9 +76,9 @@ export function RelicPlanner({ effectiveMode }: { effectiveMode: AccessMode }) {
   const needle = search.trim().toLowerCase()
 
   const entries = useMemo(() => {
-    const shown = (plan?.entries ?? []).filter(entry => (!needle || entry.relic.toLowerCase().includes(needle)) && (!onlyOwned || entry.copies > 0))
+    const shown = (plan?.entries ?? []).filter(entry => (!needle || entry.relic.toLowerCase().includes(needle)) && (!onlyOwned || entry.copies > 0) && (!era || eraOf(entry.relic) === era))
     return [...shown].sort((left, right) => compare(left, right, sort) || left.relic.localeCompare(right.relic) || REFINEMENTS.indexOf(left.refinement) - REFINEMENTS.indexOf(right.refinement))
-  }, [plan, needle, onlyOwned, sort])
+  }, [plan, needle, onlyOwned, era, sort])
 
   const sortBy = (key: SortKey) => setSort(current => current.key === key ? { key, descending: !current.descending } : { key, descending: true })
   const header = (key: SortKey, label: string) => <th aria-sort={sort.key === key ? (sort.descending ? 'descending' : 'ascending') : undefined}>
@@ -98,6 +104,13 @@ export function RelicPlanner({ effectiveMode }: { effectiveMode: AccessMode }) {
           <span>Squad</span>
           <div className="tally">
             {[1, 2, 3, 4].map(size => <button type="button" key={size} aria-pressed={squad === size} onClick={() => setSquad(size)}>{size}</button>)}
+          </div>
+        </div>
+        <div className="sort-slot" role="group" aria-label="Relic era">
+          <span>Era</span>
+          <div className="tally">
+            <button type="button" aria-pressed={era === null} onClick={() => setEra(null)}>Any</button>
+            {ERAS.map(name => <button type="button" key={name} aria-pressed={era === name} onClick={() => setEra(name)}>{name}</button>)}
           </div>
         </div>
         <label className="relic-check"><input type="checkbox" checked={onlyOwned} onChange={event => setOnlyOwned(event.target.checked)}/>Only owned</label>
