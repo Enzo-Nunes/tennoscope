@@ -14,6 +14,12 @@ see the difference.
 
 ## [Unreleased]
 
+### Added
+
+- **The Relics tab search also finds relics by what they drop.** Typing an item name, such as
+  "citrine", shows every relic with a matching reward, here every Citrine Prime part. Relic
+  names still match as before.
+
 ## [0.15.0] - 2026-10-26
 
 ### Added
