@@ -74,11 +74,15 @@ export function RelicPlanner({ effectiveMode }: { effectiveMode: AccessMode }) {
   const plan = view?.plan ?? null
   const rowsByName = useMemo(() => new Map((plan?.rows ?? []).map(row => [row.name, row])), [plan])
   const needle = search.trim().toLowerCase()
+  /** Relics whose name or any reward's name holds the search, so "citrine" finds every relic with a Citrine Prime part. */
+  const matching = useMemo(() => new Set((plan?.rows ?? [])
+    .filter(row => row.name.toLowerCase().includes(needle) || row.rewards.some(reward => reward.name.toLowerCase().includes(needle)))
+    .map(row => row.name)), [plan, needle])
 
   const entries = useMemo(() => {
-    const shown = (plan?.entries ?? []).filter(entry => (!needle || entry.relic.toLowerCase().includes(needle)) && (!onlyOwned || entry.copies > 0) && (!era || eraOf(entry.relic) === era))
+    const shown = (plan?.entries ?? []).filter(entry => (!needle || matching.has(entry.relic) || entry.relic.toLowerCase().includes(needle)) && (!onlyOwned || entry.copies > 0) && (!era || eraOf(entry.relic) === era))
     return [...shown].sort((left, right) => compare(left, right, sort) || left.relic.localeCompare(right.relic) || REFINEMENTS.indexOf(left.refinement) - REFINEMENTS.indexOf(right.refinement))
-  }, [plan, needle, onlyOwned, era, sort])
+  }, [plan, needle, matching, onlyOwned, era, sort])
 
   const sortBy = (key: SortKey) => setSort(current => current.key === key ? { key, descending: !current.descending } : { key, descending: true })
   const header = (key: SortKey, label: string) => <th aria-sort={sort.key === key ? (sort.descending ? 'descending' : 'ascending') : undefined}>
@@ -116,8 +120,8 @@ export function RelicPlanner({ effectiveMode }: { effectiveMode: AccessMode }) {
         <label className="relic-check"><input type="checkbox" checked={onlyOwned} onChange={event => setOnlyOwned(event.target.checked)}/>Only owned</label>
         <label className="search-slot">
           <svg className="punch-glyph" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter"><circle cx="10.5" cy="10.5" r="7"/><path d="M15.5 15.5 22 22"/></svg>
-          <span className="sr-only">Search relics</span>
-          <input type="search" aria-label="Search relics" placeholder="Search relics…" value={search} onChange={event => setSearch(event.target.value)}/>
+          <span className="sr-only">Search relics or rewards</span>
+          <input type="search" aria-label="Search relics or rewards" placeholder="Search relics or rewards…" value={search} onChange={event => setSearch(event.target.value)}/>
         </label>
       </div>
 

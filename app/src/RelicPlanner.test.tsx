@@ -123,6 +123,22 @@ describe('RelicPlanner', () => {
     expect(relicCells()).toContain('Meso C1 Intact')
   })
 
+  it('finds relics by name or by the items they drop', async () => {
+    backend.getRelicPlan.mockResolvedValue(ready)
+    render(<RelicPlanner effectiveMode="full"/>)
+    await screen.findByRole('table', { name: 'Relics' })
+    const search = screen.getByRole('searchbox', { name: 'Search relics or rewards' })
+
+    fireEvent.change(search, { target: { value: 'nikana' } })
+    expect(relicCells()).toEqual(['Axi A1Vaulted Intact', 'Axi A1Vaulted Flawless', 'Axi A1Vaulted Radiant'])
+
+    fireEvent.change(search, { target: { value: 'lith b' } })
+    expect(relicCells()).toEqual(['Lith B1 Intact'])
+
+    fireEvent.change(search, { target: { value: 'citrine' } })
+    expect(relicCells()).toEqual([])
+  })
+
   it('narrows the table to one era, and back to every era with Any', async () => {
     backend.getRelicPlan.mockResolvedValue(ready)
     render(<RelicPlanner effectiveMode="full"/>)
