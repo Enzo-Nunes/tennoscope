@@ -1,0 +1,183 @@
+name: Release cache
+
+# A tag run can only restore caches saved on that tag or on main, and until this workflow nothing on
+# main saved what the release jobs ask for: CI's Rust caches hold debug builds, the release jobs'
+# apt package lists differ from CI's, and the PipeWire prefix was only cached on dev. So every
+# release compiled ~600 crates from scratch on all three runners, and every slow hour on Ubuntu's
+# mirror landed on the release (v0.14.0 waited 38 minutes on apt, v0.15.0 40).
+#
+# main only moves when a release is merged, just before the tag is pushed. Each job here mirrors
+# one build job in release.yml -- same runner, same apt list, same cache keys, same build
+# settings -- and compiles the release binary without bundling or signing, so the tag run
+# restores everything but the app's own crates. release.yml's gate waits for these jobs to
+# finish (not to pass) before the builds start.
+#
+# Keep each job in step with its twin in release.yml: a package list, runner or `CARGO*` variable
+# that differs between the two changes the cache key, and the release quietly goes back to
+# compiling everything.
+on:
+  push:
+    branches: [main]
+  # Runs on any branch to check the jobs still build. Only main saves: nothing else is readable
+  # from a tag.
+  workflow_dispatch:
+
+# Never cancelled: a tag's release gate waits on the run for its own commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# As release.yml sets them for a stable tag. rust-cache hashes every `CARGO*` variable into its key,
+# so these have to match that workflow's, value for value.
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: false
+
+jobs:
+  appimage:
+    name: Warm release cache (AppImage)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      # release.yml's `appimage` list, unchanged and in the same order.
+      - name: Install system dependencies
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev
+            libgtk-3-dev
+            libayatana-appindicator3-dev
+            librsvg2-dev
+            libxdo-dev
+            libssl-dev
+            libclang-dev
+            libgbm-dev
+            libegl-dev
+            libwayland-dev
+            libxcb1-dev
+            libarchive-tools
+            meson
+            ninja-build
+            gettext
+            tesseract-ocr
+            tesseract-ocr-eng
+
+      - name: Build the PipeWire client libraries
+        uses: ./.github/actions/pipewire
+        with:
+          save: ${{ github.ref == 'refs/heads/main' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-appimage
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - uses: pnpm/action-setup@v5
+        with:
+          package_json_file: app/package.json
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: app/.node-version
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: app
+
+      # `tauri build` rather than `cargo build --release`: the CLI turns on the features a bundled
+      # app is compiled with, and a plain cargo build would cache a different set.
+      - run: pnpm tauri build --no-bundle
+        working-directory: app
+        env:
+          TENNOSCOPE_CHANNEL: stable
+
+  packages:
+    name: Warm release cache (deb and rpm)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      # release.yml's `bundles` list, unchanged and in the same order.
+      - name: Install system dependencies
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev
+            libgtk-3-dev
+            libayatana-appindicator3-dev
+            librsvg2-dev
+            libxdo-dev
+            libssl-dev
+            libpipewire-0.3-dev
+            libclang-dev
+            libgbm-dev
+            libegl-dev
+            libwayland-dev
+            libxcb1-dev
+            libarchive-tools
+            rpm
+            tesseract-ocr
+            tesseract-ocr-eng
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-packages
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - uses: pnpm/action-setup@v5
+        with:
+          package_json_file: app/package.json
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: app/.node-version
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: app
+
+      - run: pnpm tauri build --no-bundle
+        working-directory: app
+        env:
+          TENNOSCOPE_CHANNEL: stable
+
+  windows:
+    name: Warm release cache (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # The app's build script checks that every bundled resource exists, and the vendored
+      # Tesseract is one of them.
+      - name: Vendor tesseract for the bundle
+        run: ./scripts/vendor-windows-tesseract.ps1
+        shell: pwsh
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-windows
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - uses: pnpm/action-setup@v5
+        with:
+          package_json_file: app/package.json
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: app/.node-version
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: app
+
+      - run: pnpm tauri build --no-bundle
+        working-directory: app
+        env:
+          TENNOSCOPE_CHANNEL: stable
