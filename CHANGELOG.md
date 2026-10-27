@@ -19,6 +19,8 @@ see the difference.
 - **The Relics tab search also finds relics by what they drop.** Typing an item name, such as
   "citrine", shows every relic with a matching reward, here every Citrine Prime part. Relic
   names still match as before.
+- **The Relics tab can sort by refinement.** Click the Refinement header to put Radiant relics
+  first, and again for Intact first, like the value and gain columns.
 
 ### Fixed
 

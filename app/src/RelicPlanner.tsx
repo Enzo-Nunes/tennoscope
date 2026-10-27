@@ -12,7 +12,7 @@ type Era = typeof ERAS[number]
 /** A relic's era is the first word of its name, as in "Axi A1" or "Requiem IV". */
 const eraOf = (relic: string) => relic.slice(0, relic.indexOf(' '))
 
-type SortKey = 'gain' | 'value' | 'radiant'
+type SortKey = 'gain' | 'value' | 'radiant' | 'refinement'
 interface Sort { key: SortKey; descending: boolean }
 
 function figure(value: number): string {
@@ -30,8 +30,12 @@ function Value({ value, currency, signed }: { value: number; currency: PlanCurre
 
 const entryKey = (entry: RelicPlanEntry) => `${entry.relic}-${entry.refinement}`
 
-/** Compares two entries by one column, larger first. A Radiant entry has no gain and sorts last either way. */
+/** Compares two entries by one column, larger first (Radiant is the largest refinement). A Radiant entry has no gain and sorts last either way. */
 function compare(left: RelicPlanEntry, right: RelicPlanEntry, sort: Sort): number {
+  if (sort.key === 'refinement') {
+    const order = REFINEMENTS.indexOf(right.refinement) - REFINEMENTS.indexOf(left.refinement)
+    return sort.descending ? order : -order
+  }
   if (sort.key === 'gain') {
     if (left.gain_per_100 === null || right.gain_per_100 === null) return Number(left.gain_per_100 === null) - Number(right.gain_per_100 === null)
     const order = right.gain_per_100 - left.gain_per_100
@@ -135,7 +139,7 @@ export function RelicPlanner({ effectiveMode }: { effectiveMode: AccessMode }) {
             <table className="relic-table" aria-label="Relics">
               <thead><tr>
                 <th>Relic</th>
-                <th>Refinement</th>
+                {header('refinement', 'Refinement')}
                 <th>Owned</th>
                 {header('value', 'Value now')}
                 {header('radiant', 'Value at Radiant')}
