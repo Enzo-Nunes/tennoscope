@@ -39,9 +39,11 @@ env:
 jobs:
   appimage:
     name: Warm release cache (AppImage)
-    # The release gate waits for these. A stalled apt mirror must cost a slower release, not
-    # hold it for the length of the stall: a cold build takes about 8 minutes.
-    timeout-minutes: 25
+    # The release gate waits for these, so a hung job must not hold it forever. Not tighter: on a
+    # slow day Ubuntu's Azure mirror trickles the first, uncached apt download at ~50 kB/s for
+    # half an hour (30 minutes for this job's twin on 2026-10-27), and a job cut off before it
+    # saves leaves the release to sit through the same download.
+    timeout-minutes: 45
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
@@ -102,7 +104,7 @@ jobs:
   packages:
     name: Warm release cache (deb and rpm)
     # See the AppImage job.
-    timeout-minutes: 25
+    timeout-minutes: 45
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -155,7 +157,7 @@ jobs:
   windows:
     name: Warm release cache (Windows)
     # See the AppImage job.
-    timeout-minutes: 25
+    timeout-minutes: 45
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
