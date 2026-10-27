@@ -17,7 +17,7 @@ name: Release cache
 # compiling everything.
 on:
   push:
-    branches: [main]
+    branches: [main, dev] # TEMP: dev only to check the jobs build; reverted next commit
   # Runs on any branch to check the jobs still build. Only main saves: nothing else is readable
   # from a tag.
   workflow_dispatch:
