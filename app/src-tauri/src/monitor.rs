@@ -18,7 +18,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -58,6 +58,10 @@ fn emit_kiosk_update(app: &AppHandle, session: Option<u64>) {
 }
 
 const MARKER: &[u8] = b"Inventory sync done";
+/// How long to wait before scanning again for an inventory authorization the game does not hold
+/// yet. A scan costs a few seconds of memory reads, and logging in takes a minute or two.
+const LOGIN_RETRY_SECONDS: u64 = 30;
+const LOGIN_RETRY_LIMIT: u32 = 10;
 const CARRY_LIMIT: usize = 64;
 
 pub struct LogObservation {
@@ -129,6 +133,8 @@ pub struct MonitorMachine {
     attached_since: Option<u64>,
     last_refresh: Option<u64>,
     pending: bool,
+    retry_at: Option<u64>,
+    retries: u32,
     log_identity: Option<String>,
     log_offset: u64,
     carry: Vec<u8>,
@@ -142,6 +148,8 @@ impl MonitorMachine {
             attached_since: None,
             last_refresh: None,
             pending: false,
+            retry_at: None,
+            retries: 0,
             log_identity: None,
             log_offset: 0,
             carry: Vec::new(),
@@ -159,6 +167,19 @@ impl MonitorMachine {
     }
     pub fn attached_since(&self) -> Option<u64> {
         self.attached_since
+    }
+
+    /// Ask for another inventory refresh `delay` seconds from `now`, for as long as this process
+    /// stays attached. The refresh that runs as the game appears lands before the player has
+    /// logged in, and the next "Inventory sync done" can be a whole mission away, so a scan that
+    /// found no authorization asks to be run again rather than waiting on the log. Only
+    /// `LOGIN_RETRY_LIMIT` retries run per attach: past that the scanner is more likely broken by a
+    /// game update than the player still logging in, and the log marker takes over again.
+    pub fn retry_after(&mut self, now: u64, delay: u64) {
+        if self.process.is_some() && self.retries < LOGIN_RETRY_LIMIT {
+            self.retries += 1;
+            self.retry_at = Some(now.saturating_add(delay));
+        }
     }
 
     pub fn tick(&mut self, input: MonitorInput) -> MonitorResult {
@@ -221,6 +242,10 @@ impl MonitorMachine {
     }
 
     fn schedule(&mut self, now: u64, event: bool) -> bool {
+        if self.retry_at.is_some_and(|at| now >= at) {
+            self.retry_at = None;
+            self.pending = true;
+        }
         self.pending |= event;
         let ready = self
             .last_refresh
@@ -274,6 +299,8 @@ impl MonitorMachine {
         self.log_offset = 0;
         self.carry.clear();
         self.pending = false;
+        self.retry_at = None;
+        self.retries = 0;
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1184,6 +1211,7 @@ pub(crate) fn run(
     debug_assert!(policy.observe_process_presence);
     let procfs = ProcessObserver::new();
     let mut machine = MonitorMachine::new(15);
+    let login_retry_due = Arc::new(AtomicBool::new(false));
     let mut reward_log = RewardLogMachine::default();
     let mut kiosk_session = KioskSession::new();
     // The kiosk session's window/thread side effects, as hooks so the session logic itself stays
@@ -1394,12 +1422,18 @@ pub(crate) fn run(
             }
         };
         let result = machine.tick(input);
+        if login_retry_due.swap(false, Ordering::AcqRel) {
+            machine.retry_after(now, LOGIN_RETRY_SECONDS);
+        }
         if result.refresh && policy.acquire_inventory {
             let refresh = Arc::clone(&shared);
             let refresh_generation = generation.clone();
+            let retry_due = Arc::clone(&login_retry_due);
             spawn_monitor_refresh_task(move || {
-                if refresh_generation.is_current() {
-                    let _ = refresh_blocking(&refresh);
+                if refresh_generation.is_current()
+                    && refresh_blocking(&refresh).is_ok_and(|view| view.health().awaiting_login())
+                {
+                    retry_due.store(true, Ordering::Release);
                 }
             });
         }

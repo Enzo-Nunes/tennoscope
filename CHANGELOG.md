@@ -30,6 +30,12 @@ see the difference.
   never fetched again. The tables now come from the live WFCD API (798 relics on 2026-10-26),
   and the cached copy is refreshed once it is a week old, falling back to it while offline. The
   reward screen's relic list gets the same refresh.
+- **Starting Warframe no longer shows "Attention needed: inventory authorization was not
+  found".** The inventory scan that runs as the game appears always lands before login, when
+  the game holds no authorization yet, and the app then waited for the next "Inventory sync
+  done" in EE.log, sometimes a whole mission later. The status now reads as waiting for login,
+  and the scan is retried every 30 seconds (at most ten times per launch) until it succeeds.
+  A scan that finds nothing makes no request to Digital Extremes.
 
 ## [0.15.0] - 2026-10-26
 

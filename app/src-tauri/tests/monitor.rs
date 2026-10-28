@@ -250,3 +250,36 @@ fn retired_generation_rejects_post_work_publication() {
 
     assert!(publication_rx.try_recv().is_err());
 }
+
+#[test]
+fn a_login_retry_refreshes_again_once_due_and_dies_with_the_process() {
+    let mut monitor = MonitorMachine::new(15);
+    assert!(monitor.tick(MonitorInput::running(0, 7, None)).refresh);
+    monitor.retry_after(5, 30);
+    assert!(!monitor.tick(MonitorInput::running(20, 7, None)).refresh);
+    assert!(monitor.tick(MonitorInput::running(35, 7, None)).refresh);
+    assert!(!monitor.tick(MonitorInput::running(70, 7, None)).refresh);
+
+    monitor.retry_after(70, 30);
+    monitor.tick(MonitorInput::absent(80, false));
+    assert!(monitor.tick(MonitorInput::running(81, 8, None)).refresh);
+    assert!(!monitor.tick(MonitorInput::running(120, 8, None)).refresh);
+}
+
+#[test]
+fn login_retries_stop_after_ten_per_attach() {
+    let mut monitor = MonitorMachine::new(15);
+    assert!(monitor.tick(MonitorInput::running(0, 7, None)).refresh);
+    let mut now = 0;
+    for _ in 0..10 {
+        monitor.retry_after(now, 30);
+        now += 30;
+        assert!(monitor.tick(MonitorInput::running(now, 7, None)).refresh);
+    }
+    monitor.retry_after(now, 30);
+    assert!(
+        !monitor
+            .tick(MonitorInput::running(now + 30, 7, None))
+            .refresh
+    );
+}

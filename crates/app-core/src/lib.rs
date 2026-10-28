@@ -568,6 +568,7 @@ impl AppCore {
                 self.mastery_facts = Some(result.mastery_facts().clone());
                 self.reward = RewardAdvisor::advise(Vec::new());
                 self.health.game_reader = BackendHealth::inventory_sync(&meta)?;
+                self.health.awaiting_login = false;
                 self.health.acquisition_stages = result
                     .health()
                     .stages()
@@ -604,10 +605,20 @@ impl AppCore {
                     .copied()
                     .map(AcquisitionStageView::from)
                     .collect();
+                self.health.awaiting_login =
+                    matches!(failure.error(), AcquisitionError::AuthorizationNotFound);
                 self.health.game_reader = match failure.error() {
                     AcquisitionError::GameNotRunning | AcquisitionError::LauncherRunning => {
                         BackendHealth::idle(failure.to_string(), last_success)?
                     }
+                    // The game holds no inventory authorization until the player has logged in,
+                    // so the scan that runs as the process appears always misses. That is the
+                    // game still starting, not something for the player to fix; the monitor
+                    // keeps retrying until the login lands.
+                    AcquisitionError::AuthorizationNotFound => BackendHealth::idle(
+                        "Waiting for Warframe login; inventory loads once you are in",
+                        last_success,
+                    )?,
                     _ => match failure.health().stages().first().map(|stage| stage.state()) {
                         Some(StageState::Degraded) => BackendHealth::new(
                             HealthState::Degraded,
@@ -1195,6 +1206,10 @@ pub struct HealthView {
     collection_prices: BackendHealth,
     database: BackendHealth,
     acquisition_stages: Vec<AcquisitionStageView>,
+    /// The last inventory attempt found no authorization, which is what a game still at its
+    /// login screen looks like. The monitor reads this to know a retry is worth scheduling.
+    #[serde(skip)]
+    awaiting_login: bool,
     /// The linked warframe.market account, kept apart from `market`: that row answers "could we
     /// reach warframe.market for a price", and this one answers "is an account connected". One
     /// can be healthy while the other is not.
@@ -1218,6 +1233,7 @@ impl HealthView {
             )?,
             database: BackendHealth::ready("SQLite database available", None)?,
             acquisition_stages: Vec::new(),
+            awaiting_login: false,
             market_account: BackendHealth::idle("No warframe.market account linked", None)?,
         })
     }
@@ -1265,6 +1281,10 @@ impl HealthView {
 
     pub fn acquisition_stages(&self) -> &[AcquisitionStageView] {
         &self.acquisition_stages
+    }
+
+    pub fn awaiting_login(&self) -> bool {
+        self.awaiting_login
     }
 
     pub fn market_account(&self) -> &BackendHealth {
