@@ -75,6 +75,66 @@ pub fn frame_is_black(image: &image::RgbaImage) -> bool {
         .all(|pixel| pixel[0] <= NEAR_BLACK && pixel[1] <= NEAR_BLACK && pixel[2] <= NEAR_BLACK)
 }
 
+/// Brightness of a frame on the same sampling grid as `frame_is_black`: per-channel minimum, mean
+/// and maximum, and the alpha range.
+#[cfg(target_os = "linux")]
+pub fn frame_stats(image: &image::RgbaImage) -> String {
+    let mut min = [u8::MAX; 4];
+    let mut max = [0_u8; 4];
+    let mut sum = [0_u64; 4];
+    let mut count = 0_u64;
+    for pixel in image.pixels().step_by(7) {
+        for channel in 0..4 {
+            min[channel] = min[channel].min(pixel[channel]);
+            max[channel] = max[channel].max(pixel[channel]);
+            sum[channel] += u64::from(pixel[channel]);
+        }
+        count += 1;
+    }
+    let mean = sum.map(|total| total.checked_div(count).unwrap_or(0));
+    format!(
+        "{}x{} r={}/{}/{} g={}/{}/{} b={}/{}/{} a={}..{}",
+        image.width(),
+        image.height(),
+        min[0],
+        mean[0],
+        max[0],
+        min[1],
+        mean[1],
+        max[1],
+        min[2],
+        mean[2],
+        max[2],
+        min[3],
+        max[3],
+    )
+}
+
+/// Every window capture's brightness, and in a dev build the raw frame itself every so often.
+///
+/// A blank OCR read says nothing about why: the 2026-10-28 run read every card blank on frames
+/// `frame_is_black` did not call black, and nothing logged showed what the frames held. The raw
+/// frame is written to one overwritten file so a report can attach it without filling `/tmp`.
+#[cfg(target_os = "linux")]
+fn trace_window_frame(image: &image::RgbaImage) {
+    log::debug!("[DEBUG-capture] window frame {}", frame_stats(image));
+    #[cfg(debug_assertions)]
+    {
+        static LAST_SAVED: std::sync::Mutex<Option<std::time::Instant>> =
+            std::sync::Mutex::new(None);
+        let mut last = LAST_SAVED
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if last.is_none_or(|saved| saved.elapsed() >= Duration::from_secs(10)) {
+            *last = Some(std::time::Instant::now());
+            let path = std::env::temp_dir().join("tennoscope-window-frame.png");
+            if image.save(&path).is_ok() {
+                log::debug!("[DEBUG-capture] window frame saved to {}", path.display());
+            }
+        }
+    }
+}
+
 /// Native window discovery on every platform, with pixel capture only off Windows.
 pub struct X11Capture {
     selected_window: Option<u32>,
@@ -101,6 +161,7 @@ impl X11Capture {
     pub fn capture_window(&mut self, rect: WindowRect) -> Result<MonitorFrame, &'static str> {
         let window = self.selected_window.ok_or("no Warframe window found")?;
         let image = capture_x11_window(window, rect.width, rect.height)?;
+        trace_window_frame(&image);
         if frame_is_black(&image) {
             let streak = BLACK_FRAME_STREAK.fetch_add(1, Ordering::AcqRel) + 1;
             if streak == BLACK_FRAMES_TO_REPORT {
