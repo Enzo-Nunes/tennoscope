@@ -1258,7 +1258,7 @@ function DesktopCaptureSetting({ actionAvailable, prohibited, busy, note, onNote
   return <div className="setting">
     <div>
       <h3>Screen capture</h3>
-      <p className="prose">Screen capture is automatic. Desktop sharing is only needed when Warframe is launched with PROTON_ENABLE_WAYLAND=1 and this compositor has no direct capture API.</p>
+      <p className="prose">Screen capture is automatic. Desktop sharing is only needed when this compositor has no direct capture API and either Warframe is launched with PROTON_ENABLE_WAYLAND=1 or its window keeps capturing as black.</p>
       {prohibited ? <p className="prohibition-note" id="capture-prohibited">Overlay or Full access is required because Companion does not use screen capture.</p> : actionAvailable && <p className="prose">The desktop opens its own screen chooser. Select every display where Warframe may run. KDE/GNOME may show an active screen-sharing indicator. TennoScope releases the session when the game exits.</p>}
     </div>
     {(actionAvailable || prohibited) && <button type="button" className="stamp" onClick={authorize} disabled={busy || prohibited} aria-busy={busy} aria-describedby={prohibited ? 'capture-prohibited' : undefined}>{busy ? 'Allowing desktop capture…' : 'Allow desktop capture'}</button>}

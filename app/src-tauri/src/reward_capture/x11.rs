@@ -7,6 +7,8 @@
 #[cfg(target_os = "linux")]
 use std::process::Command;
 #[cfg(target_os = "linux")]
+use std::sync::atomic::{AtomicU32, Ordering};
+#[cfg(target_os = "linux")]
 use std::time::Duration;
 #[cfg(target_os = "linux")]
 use xcb::{
@@ -34,6 +36,45 @@ const XWININFO_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 #[cfg(target_os = "linux")]
 static XWININFO_RETRY: RetryCooldown = RetryCooldown::new(XWININFO_RETRY_INTERVAL);
 
+/// What `capture_window` returns when the game's drawable comes back with no picture in it.
+///
+/// XWayland can answer `GetImage` on a Vulkan-presented window with an all-black buffer for a
+/// whole game session: the 2026-10-26 and 10-27 reports show every OCR read blank, mid-mission
+/// included, while an earlier session the same day read fine. Telling that apart from a blank card
+/// is what lets capture move to another backend instead of reporting four empty titles.
+#[cfg(target_os = "linux")]
+pub const BLACK_WINDOW_FRAME: &str = "the game window captured as a black frame";
+
+/// No real Warframe frame is this dark everywhere; a loading screen is, briefly, so one black
+/// frame says little. This many in a row (a few seconds of polling) is what the setup screen
+/// treats as XWayland withholding the picture.
+#[cfg(target_os = "linux")]
+const BLACK_FRAMES_TO_REPORT: u32 = 5;
+
+/// Consecutive black window captures, process-wide so the setup screen can ask without a capture.
+#[cfg(target_os = "linux")]
+static BLACK_FRAME_STREAK: AtomicU32 = AtomicU32::new(0);
+
+/// Whether recent window captures have all been black, so XWayland capture is not usable.
+#[cfg(target_os = "linux")]
+pub fn window_frames_black() -> bool {
+    BLACK_FRAME_STREAK.load(Ordering::Acquire) >= BLACK_FRAMES_TO_REPORT
+}
+
+/// Whether a frame has no picture in it: every sampled pixel at or below a near-black level.
+///
+/// Sampled on a grid rather than read whole because this runs on every poll, and a real frame is
+/// not black anywhere near a grid's worth of points.
+#[cfg(target_os = "linux")]
+pub fn frame_is_black(image: &image::RgbaImage) -> bool {
+    const STEP: usize = 7;
+    const NEAR_BLACK: u8 = 8;
+    image
+        .pixels()
+        .step_by(STEP)
+        .all(|pixel| pixel[0] <= NEAR_BLACK && pixel[1] <= NEAR_BLACK && pixel[2] <= NEAR_BLACK)
+}
+
 /// Native window discovery on every platform, with pixel capture only off Windows.
 pub struct X11Capture {
     selected_window: Option<u32>,
@@ -60,6 +101,18 @@ impl X11Capture {
     pub fn capture_window(&mut self, rect: WindowRect) -> Result<MonitorFrame, &'static str> {
         let window = self.selected_window.ok_or("no Warframe window found")?;
         let image = capture_x11_window(window, rect.width, rect.height)?;
+        if frame_is_black(&image) {
+            let streak = BLACK_FRAME_STREAK.fetch_add(1, Ordering::AcqRel) + 1;
+            if streak == BLACK_FRAMES_TO_REPORT {
+                log::warn!(
+                    "[DEBUG-capture] the game window has captured black {streak} times in a row"
+                );
+            }
+            return Err(BLACK_WINDOW_FRAME);
+        }
+        if BLACK_FRAME_STREAK.swap(0, Ordering::AcqRel) >= BLACK_FRAMES_TO_REPORT {
+            log::info!("[DEBUG-capture] the game window captures a picture again");
+        }
         Ok(MonitorFrame {
             image,
             origin_x: rect.x,
@@ -379,11 +432,25 @@ fn parse_window_line(line: &str) -> Option<(String, WindowRect)> {
 mod tests {
     use std::io::ErrorKind;
 
-    use super::{XWININFO_RETRY_INTERVAL, x11_image_to_rgba, xwininfo_error_reason};
+    use super::{
+        XWININFO_RETRY_INTERVAL, frame_is_black, x11_image_to_rgba, xwininfo_error_reason,
+    };
     use super::{largest_warframe_window_with_id, warframe_window_from_xwininfo_tree};
     use crate::overlay_window::WindowRect;
     use crate::reward_capture::availability::RetryCooldown;
     use xcb::x::ImageOrder;
+
+    /// Mutation caught: calling a frame black on its average, or on its first rows, would hide a
+    /// dark reward screen whose only light is one card title.
+    #[test]
+    fn a_frame_is_black_only_when_no_sampled_pixel_has_any_light() {
+        let mut frame = image::RgbaImage::from_pixel(64, 36, image::Rgba([4, 6, 8, 255]));
+        assert!(frame_is_black(&frame));
+        for x in 20..40 {
+            frame.put_pixel(x, 30, image::Rgba([230, 230, 230, 255]));
+        }
+        assert!(!frame_is_black(&frame));
+    }
 
     /// Mutation caught: collapsing `NotFound` into the generic tree-walk failure would make a
     /// missing system dependency indistinguishable from every other launch failure.

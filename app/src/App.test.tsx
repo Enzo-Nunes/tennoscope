@@ -604,7 +604,7 @@ describe('MVP desktop interface', () => {
     await screen.findByRole('heading', { name: 'Your collection' })
     await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
 
-    expect(screen.getByText('Screen capture is automatic. Desktop sharing is only needed when Warframe is launched with PROTON_ENABLE_WAYLAND=1 and this compositor has no direct capture API.')).toBeInTheDocument()
+    expect(screen.getByText('Screen capture is automatic. Desktop sharing is only needed when this compositor has no direct capture API and either Warframe is launched with PROTON_ENABLE_WAYLAND=1 or its window keeps capturing as black.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Captured screens|Set up screen capture|Change captured screens|Allow desktop capture/i })).not.toBeInTheDocument()
     expect(backend.authorizeScreenCapture).not.toHaveBeenCalled()
   })

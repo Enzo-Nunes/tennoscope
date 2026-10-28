@@ -311,6 +311,12 @@ fn capture_choice(
 pub const NO_WAYLAND_BACKEND: &str =
     "Desktop capture permission is required for native Wayland Warframe";
 
+/// What the player sees when XWayland captures the game as black and nothing else can capture.
+///
+/// GNOME has no silent capture API, so the portal grant from Settings is the only way through.
+pub const BLACK_WINDOW_NEEDS_DESKTOP_CAPTURE: &str =
+    "Warframe's window captures as black; allow desktop capture in Settings";
+
 /// Everything about a capture that decides which pixels get read.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CaptureShape {
@@ -503,6 +509,22 @@ impl GameCapture {
         }
     }
 
+    /// Every monitor one whole-monitor backend can see.
+    #[cfg(target_os = "linux")]
+    fn capture_whole_monitors(
+        &mut self,
+        backend: FrameBackend,
+    ) -> Result<Vec<(WindowRect, MonitorFrame)>, &'static str> {
+        match backend {
+            FrameBackend::X11 => Err("no Warframe window found"),
+            FrameBackend::Wayland => self.direct.capture_monitors(),
+            // A KWin failure stays a KWin failure: falling through to the portal here would
+            // trade a fixable authorization error for a permission prompt mid-mission.
+            FrameBackend::Kwin => self.kwin.capture_monitors(),
+            FrameBackend::Portal => self.portal.capture_monitors(),
+        }
+    }
+
     /// Every plausible game rectangle and its window-sized frame.
     pub fn capture_candidates(&mut self) -> Result<Vec<CapturedFrame>, &'static str> {
         let x11_rect = self.x11.game_rect();
@@ -521,9 +543,10 @@ impl GameCapture {
             BackendAvailability::NONE
         };
 
+        #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
         let CaptureChoice {
-            rect_origin,
-            frame_backend,
+            mut rect_origin,
+            mut frame_backend,
             x11_rect,
         } = capture_choice(self.session, x11_rect, available)?;
 
@@ -531,17 +554,26 @@ impl GameCapture {
         let captures = match frame_backend {
             FrameBackend::X11 => {
                 let rect = x11_rect.ok_or("no Warframe window found")?;
-                let frame = match x11_frame_target(self.session) {
-                    X11FrameTarget::Monitor => self.x11.capture_monitor(rect)?,
-                    X11FrameTarget::Window => self.x11.capture_window(rect)?,
-                };
-                vec![(rect, frame)]
+                match x11_frame_target(self.session) {
+                    X11FrameTarget::Monitor => vec![(rect, self.x11.capture_monitor(rect)?)],
+                    X11FrameTarget::Window => match self.x11.capture_window(rect) {
+                        Ok(frame) => vec![(rect, frame)],
+                        // XWayland found the game but handed back no picture. A whole-monitor
+                        // backend reads the composited screen instead, so the window is captured
+                        // the way a native-Wayland game is, if this desktop offers one.
+                        Err(reason) if reason == x11::BLACK_WINDOW_FRAME => {
+                            let (origin, backend) =
+                                capture_sources(self.session, false, self.backend_availability())
+                                    .ok_or(BLACK_WINDOW_NEEDS_DESKTOP_CAPTURE)?;
+                            rect_origin = origin;
+                            frame_backend = backend;
+                            self.capture_whole_monitors(backend)?
+                        }
+                        Err(reason) => return Err(reason),
+                    },
+                }
             }
-            FrameBackend::Wayland => self.direct.capture_monitors()?,
-            // A KWin failure stays a KWin failure: falling through to the portal here would
-            // trade a fixable authorization error for a permission prompt mid-mission.
-            FrameBackend::Kwin => self.kwin.capture_monitors()?,
-            FrameBackend::Portal => self.portal.capture_monitors()?,
+            backend => self.capture_whole_monitors(backend)?,
         };
         #[cfg(windows)]
         let captures = {
