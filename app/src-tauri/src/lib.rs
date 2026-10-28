@@ -318,12 +318,6 @@ fn current_setup_status(stored: SetupStatus, game_running: bool) -> SetupStatus 
     };
     if game_running {
         input.x11_game_window = reward_capture::x11_game_window_available();
-        // A window XWayland keeps capturing as black is found but not readable, so it leaves
-        // the setup screen offering desktop capture, the way a native-Wayland game does.
-        #[cfg(target_os = "linux")]
-        if reward_capture::x11::window_frames_black() {
-            input.x11_game_window = false;
-        }
         #[cfg(target_os = "linux")]
         if !input.x11_game_window {
             input.wlroots_available = reward_capture::direct::available();
