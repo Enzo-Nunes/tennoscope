@@ -587,7 +587,7 @@ fn clear_appimage_library_path(command: &mut Command) {
 ///
 /// Empty entries go too: the runtime's `%s/usr/lib/:...:%s` template leaves one behind when the
 /// variable was unset before launch, and the loader reads an empty entry as the working directory.
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(target_os = "linux", all(test, unix)))]
 fn without_appdir_entries(
     library_path: &std::ffi::OsStr,
     appdir: &Path,
