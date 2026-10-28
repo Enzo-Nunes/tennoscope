@@ -534,14 +534,71 @@ fn run_tesseract(
             tessdata_dir_arg(directory).as_os_str(),
         ]);
     }
+    #[cfg(target_os = "linux")]
+    clear_appimage_library_path(&mut command);
     command
         .arg(image)
         .args(["-", "--psm", page_segmentation_mode]);
     if let Some(whitelist) = whitelist {
         command.args(["-c", &format!("tessedit_char_whitelist={whitelist}")]);
     }
-    let text = command.output().map_err(|_| "tesseract is not available")?;
-    Ok(String::from_utf8_lossy(&text.stdout).into_owned())
+    let output = command.output().map_err(|_| "tesseract is not available")?;
+    // A tesseract that cannot start still writes nothing to stdout, and an empty stdout is
+    // otherwise indistinguishable from a card with no text on it. That is how the 2026-10-28
+    // symbol-lookup failure below hid for a week: every read came back blank, nothing said why.
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::warn!(
+            "ocr: tesseract exited with {}: {}",
+            output.status,
+            stderr.lines().next().unwrap_or("(no stderr)")
+        );
+        return Err("tesseract failed to run");
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Keep the AppImage's own libraries away from the system Tesseract.
+///
+/// The AppImage runtime prepends `$APPDIR/usr/lib` and its siblings to `LD_LIBRARY_PATH` for the
+/// app, and every child inherits that. Linux packages run the distribution's Tesseract, which was
+/// linked against the distribution's libraries, not the ones bundled from the build host. On
+/// 2026-10-28 that broke every read on Arch: the bundle's libjpeg-turbo 2.1.2 shadowed the system's
+/// 3.x, and the system libtiff then died with `undefined symbol: jpeg12_write_raw_data` (exit 127)
+/// before it read a pixel. Only the bundle's entries go, so a path the user set still applies.
+#[cfg(target_os = "linux")]
+fn clear_appimage_library_path(command: &mut Command) {
+    if std::env::var_os("APPIMAGE").is_none() {
+        return;
+    }
+    let (Some(appdir), Some(library_path)) = (
+        std::env::var_os("APPDIR"),
+        std::env::var_os("LD_LIBRARY_PATH"),
+    ) else {
+        return;
+    };
+    match without_appdir_entries(&library_path, Path::new(&appdir)) {
+        Some(kept) => command.env("LD_LIBRARY_PATH", kept),
+        None => command.env_remove("LD_LIBRARY_PATH"),
+    };
+}
+
+/// `library_path` with every entry inside `appdir` dropped, or `None` when nothing is left.
+///
+/// Empty entries go too: the runtime's `%s/usr/lib/:...:%s` template leaves one behind when the
+/// variable was unset before launch, and the loader reads an empty entry as the working directory.
+#[cfg(any(target_os = "linux", test))]
+fn without_appdir_entries(
+    library_path: &std::ffi::OsStr,
+    appdir: &Path,
+) -> Option<std::ffi::OsString> {
+    let kept: Vec<PathBuf> = std::env::split_paths(library_path)
+        .filter(|entry| !entry.as_os_str().is_empty() && !entry.starts_with(appdir))
+        .collect();
+    if kept.is_empty() {
+        return None;
+    }
+    std::env::join_paths(kept).ok()
 }
 
 /// The `--tessdata-dir` value Tesseract can actually open.
@@ -1022,6 +1079,48 @@ mod tests {
         assert_eq!(
             super::tessdata_dir_arg(std::path::Path::new("/usr/share/tessdata")),
             std::path::PathBuf::from("/usr/share/tessdata"),
+        );
+    }
+
+    /// The AppImage runtime's own entries must go and the user's must stay, in order: on
+    /// 2026-10-28 the bundle's libjpeg shadowed the system one and every Tesseract spawn died.
+    #[cfg(unix)]
+    #[test]
+    fn appimage_library_entries_are_dropped_and_user_entries_kept() {
+        let appdir = std::path::Path::new("/tmp/.mount_TennoSabc123");
+        let library_path = std::ffi::OsStr::new(
+            "/tmp/.mount_TennoSabc123/usr/lib/:/tmp/.mount_TennoSabc123/lib/x86_64-linux-gnu/\
+             :/opt/cuda/lib64:/home/me/lib",
+        );
+        assert_eq!(
+            super::without_appdir_entries(library_path, appdir),
+            Some(std::ffi::OsString::from("/opt/cuda/lib64:/home/me/lib")),
+        );
+    }
+
+    /// With only the runtime's entries, plus the empty one its template leaves when the variable
+    /// was unset at launch, nothing is left and the variable should be removed outright.
+    #[cfg(unix)]
+    #[test]
+    fn appimage_library_path_with_nothing_of_the_users_is_removed() {
+        let appdir = std::path::Path::new("/tmp/.mount_TennoSabc123");
+        let library_path = std::ffi::OsStr::new(
+            "/tmp/.mount_TennoSabc123/usr/lib/:/tmp/.mount_TennoSabc123/lib/:",
+        );
+        assert_eq!(super::without_appdir_entries(library_path, appdir), None);
+    }
+
+    /// `starts_with` is per component, so a sibling directory that merely shares the mount
+    /// point's name as a string prefix is the user's, not the bundle's.
+    #[cfg(unix)]
+    #[test]
+    fn appimage_filter_does_not_drop_a_lookalike_sibling() {
+        let appdir = std::path::Path::new("/tmp/.mount_TennoS");
+        let library_path =
+            std::ffi::OsStr::new("/tmp/.mount_TennoS/usr/lib:/tmp/.mount_TennoSx/lib");
+        assert_eq!(
+            super::without_appdir_entries(library_path, appdir),
+            Some(std::ffi::OsString::from("/tmp/.mount_TennoSx/lib")),
         );
     }
 }
