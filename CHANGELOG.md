@@ -62,8 +62,8 @@ see the difference.
 - **AppImages can update themselves.** The update panel said TennoScope could not replace its
   own file wherever the AppImage lived, because it tested the running file, which Linux never
   lets a program write to. It now tests the folder, which is what an update actually changes.
-- **The reward overlay no longer covers squadmates' names.** It now sits 15% of the screen
-  height lower (162px at 1080p), scaled to the screen height as before.
+- **The reward overlay no longer covers squadmates' names.** It now starts 90px lower at 1080p
+  (620px instead of 530px), scaled to the screen height as before.
 - **The full test suite passes on every tesseract build.** The 16:10 reward-geometry test
   asserted every card read at >= 0.9, which the combined legacy+LSTM `tessdata` that Arch and
   Fedora ship misses by one character on `2X Forma Blueprint` (0.875), so those packages had to
