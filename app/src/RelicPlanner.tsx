@@ -96,7 +96,7 @@ export function RelicPlanner({ effectiveMode }: { effectiveMode: AccessMode }) {
   return <section className="page" aria-labelledby="relics-title">
     <div className="mark-head">
       <h1 id="relics-title" className="mark">Relic planner</h1>
-      <p className="prose">What each relic is worth opened as it is and at Radiant, at your squad size. Gain per 100 traces puts every refinement on the same footing: high is where Void Traces buy the most, and at or below zero a relic is best opened as it is.</p>
+      <p className="prose">Each relic's value as it is and at Radiant, for your squad. Gain per 100 traces shows where Void Traces pay off most.</p>
     </div>
 
     <div className="register">
