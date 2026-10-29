@@ -883,7 +883,9 @@ fn worker_loop(shared: Arc<Shared>) {
             let mut slot = lock(&shared.delivery);
             // A pending Recognized read is the valuable signal: failures or Gone arriving before
             // the monitor drains it must not overwrite it. The monitor publishes on drain, and a
-            // later Gone (or the log's Closed line) still hides the overlay.
+            // later Gone (or the log's Closed line) still hides the overlay. A pending Gone is the
+            // same: the worker keeps reading after it, and a failure landing before the monitor's
+            // next poll would otherwise swallow the hide and leave the overlay up.
             if matches!(kind, DeliveryKind::Recognized { .. }) {
                 *slot = Some(Delivery {
                     epoch: capture_epoch,
@@ -892,9 +894,12 @@ fn worker_loop(shared: Arc<Shared>) {
                 });
                 return;
             }
-            let overwrite = slot
-                .as_ref()
-                .is_none_or(|pending| !matches!(pending.kind, DeliveryKind::Recognized { .. }));
+            let overwrite = slot.as_ref().is_none_or(|pending| {
+                !matches!(
+                    pending.kind,
+                    DeliveryKind::Recognized { .. } | DeliveryKind::Gone
+                )
+            });
             if overwrite {
                 *slot = Some(Delivery {
                     epoch: capture_epoch,
