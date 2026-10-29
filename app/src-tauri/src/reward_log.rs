@@ -78,6 +78,33 @@ impl RewardLogMachine {
             .collect()
     }
 
+    /// Adopt whatever round a stretch of log *ends* in, called once when the monitor attaches
+    /// to a game process. The live tail starts at EOF, and in an endless mission the relics
+    /// for the next screen load right after the previous one shuts down, minutes before the
+    /// next `OpenVoidProjectionRewardScreen`. An app started in between (the 2026-10-29 dev
+    /// rebuild landed 25 s before a Void Cascade screen) never saw those loads, held an empty
+    /// pool, and captured nothing. The partial first line is dropped, the rest is replayed
+    /// through a fresh machine that replaces this one, and a baseline is returned only when the
+    /// replay requested one with relics still loaded. A tail that ends after a shutdown arms
+    /// nothing, because the close cleared its relics.
+    pub fn adopt_tail(&mut self, bytes: &[u8]) -> Vec<RewardLogEvent> {
+        let complete = bytes
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(bytes.len(), |index| index + 1);
+        let mut replayed = Self::default();
+        replayed.observe_bytes(&bytes[complete..]);
+        replayed.carry.clear();
+        *self = replayed;
+        if self.baseline_requested && !self.loaded_relics.is_empty() {
+            vec![RewardLogEvent::BaselineRequested {
+                relic_paths: self.loaded_relics.clone(),
+            }]
+        } else {
+            Vec::new()
+        }
+    }
+
     pub fn observe_line(&mut self, line: &str) -> Vec<RewardLogEvent> {
         if let Some(path) = projection_path(line) {
             if !self.loaded_relics.iter().any(|loaded| loaded == path) {

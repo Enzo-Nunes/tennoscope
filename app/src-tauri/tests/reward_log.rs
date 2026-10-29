@@ -348,6 +348,116 @@ fn waiting_responder_is_exposed_before_its_reward_arrives() {
     );
 }
 
+// Real lines from the 2026-10-29 Void Cascade, where a dev rebuild restarted the app at
+// 20:28:48, after this round's relics loaded (20:24:20) and before its screen opened (20:29:13).
+const CASCADE_FIRST_SHUTDOWN: &str =
+    "1235.999 Script [Info]: ProjectionRewardChoice.lua: Relic reward screen shut down";
+const CASCADE_RELIC_LOADS: [&str; 4] = [
+    "1238.556 Sys [Info]: Resource load completed 0x000000005B9054D0 (/Lotus/Types/Game/Projections/T3VoidProjectionCitrinePrimeBBronze) in one pass and 0.0s (I/O ~= 0.0%, inherited 20 of 20)",
+    "1239.469 Sys [Info]: Resource load completed 0x0000000047E51160 (/Lotus/Types/Game/Projections/T2VoidProjectionProteaPrimeDPlatinum) in one pass and 0.0s (I/O ~= 0.0%, inherited 19 of 19)",
+    "1240.117 Sys [Info]: Resource load completed 0x0000000061E7E480 (/Lotus/Types/Game/Projections/T2VoidProjectionRevenantPrimeBPlatinum) in one pass and 0.0s (I/O ~= 0.0%, inherited 16 of 16)",
+    "1243.490 Sys [Info]: Resource load completed 0x0000000030FB22D0 (/Lotus/Types/Game/Projections/T3VoidProjectionLavosPrimeDPlatinum) in one pass and 0.0s (I/O ~= 0.0%, inherited 18 of 18)",
+];
+// The game's second shutdown for the same screen, logged after the next round's relics loaded.
+const CASCADE_FORCE_CLOSE: &str =
+    "1248.469 Script [Info]: ProjectionRewardChoice.lua: Relic reward screen shut down";
+const CASCADE_OPEN: &str =
+    "1531.786 Sys [Info]: VoidProjections: OpenVoidProjectionRewardScreenRMI";
+const CASCADE_SHUTDOWN: &str =
+    "1552.447 Script [Info]: ProjectionRewardChoice.lua: Relic reward screen shut down";
+
+fn cascade_tail(lines: &[&str]) -> Vec<u8> {
+    let mut bytes = b"ded 0x0000000047757680 (/Lotus/Interface/Icons/CosmeticEnhancers/Arcanes/Projections/ArcaneProjectionBZ.png) starting\n".to_vec();
+    for line in lines {
+        bytes.extend_from_slice(line.as_bytes());
+        bytes.push(b'\n');
+    }
+    bytes
+}
+
+fn cascade_relics() -> Vec<String> {
+    [
+        "T3VoidProjectionCitrinePrimeBBronze",
+        "T2VoidProjectionProteaPrimeDPlatinum",
+        "T2VoidProjectionRevenantPrimeBPlatinum",
+        "T3VoidProjectionLavosPrimeDPlatinum",
+    ]
+    .into_iter()
+    .map(|name| format!("/Lotus/Types/Game/Projections/{name}"))
+    .collect()
+}
+
+#[test]
+fn adopted_tail_with_loaded_relics_and_no_shutdown_requests_their_baseline() {
+    let mut lines = vec![CASCADE_FIRST_SHUTDOWN];
+    lines.extend(CASCADE_RELIC_LOADS);
+    lines.push(CASCADE_FORCE_CLOSE);
+    let mut machine = RewardLogMachine::default();
+
+    assert_eq!(
+        machine.adopt_tail(&cascade_tail(&lines)),
+        vec![RewardLogEvent::BaselineRequested {
+            relic_paths: cascade_relics(),
+        }]
+    );
+    assert!(!machine.reward_window_open());
+}
+
+#[test]
+fn adopted_tail_ending_in_a_shutdown_arms_nothing() {
+    let mut lines = CASCADE_RELIC_LOADS.to_vec();
+    lines.extend([CASCADE_OPEN, CASCADE_SHUTDOWN]);
+    let mut machine = RewardLogMachine::default();
+
+    assert!(machine.adopt_tail(&cascade_tail(&lines)).is_empty());
+    assert!(!machine.reward_window_open());
+    assert_eq!(
+        machine.observe_line(CASCADE_OPEN),
+        vec![RewardLogEvent::RewardWindowOpened]
+    );
+}
+
+#[test]
+fn adopted_tail_ignores_its_partial_first_line() {
+    // The fragment is the tail of a relic load the read started inside of; only the complete
+    // load after it counts, so one relic alone does not request a baseline yet.
+    let mut bytes = CASCADE_RELIC_LOADS[0].as_bytes()[40..].to_vec();
+    bytes.push(b'\n');
+    bytes.extend_from_slice(CASCADE_RELIC_LOADS[1].as_bytes());
+    bytes.push(b'\n');
+    let mut machine = RewardLogMachine::default();
+
+    assert!(machine.adopt_tail(&bytes).is_empty());
+    assert_eq!(
+        machine.observe_line(CASCADE_OPEN),
+        vec![
+            RewardLogEvent::RewardWindowOpened,
+            RewardLogEvent::BaselineRequested {
+                relic_paths: vec![
+                    "/Lotus/Types/Game/Projections/T2VoidProjectionProteaPrimeDPlatinum".into()
+                ],
+            },
+        ]
+    );
+}
+
+#[test]
+fn reward_screen_after_an_adopted_tail_opens_without_a_second_baseline() {
+    let mut machine = RewardLogMachine::default();
+    assert_eq!(
+        machine
+            .adopt_tail(&cascade_tail(&CASCADE_RELIC_LOADS))
+            .len(),
+        1
+    );
+
+    assert_eq!(
+        machine.observe_line(CASCADE_OPEN),
+        vec![RewardLogEvent::RewardWindowOpened]
+    );
+    assert!(machine.reward_window_open());
+}
+
 fn is_render_lifecycle_event(event: &RewardLogEvent) -> bool {
     matches!(
         event,

@@ -1384,6 +1384,7 @@ pub(crate) fn run(
         if process_replaced && let Some(kiosk_view_cell) = app.try_state::<KioskState>() {
             kiosk_session.close(kiosk_view_cell.inner(), &kiosk_hide, &kiosk_retire);
         }
+        let mut adopted_reward_events = Vec::new();
         let (input, log_bytes) = match discovered {
             Ok(None) => (
                 MonitorInput::absent(now, procfs.launcher_present()),
@@ -1414,6 +1415,19 @@ pub(crate) fn run(
                                 kiosk_view_cell.inner(),
                                 &kiosk_show,
                                 &kiosk_spawn,
+                            );
+                        }
+                        // Same blind spot for relic rewards: in an endless mission the next
+                        // round's relics load minutes before its reward screen opens, so an app
+                        // started in between must recover them from the tail or it never captures.
+                        adopted_reward_events =
+                            reward_log.adopt_tail(&log_tail(ee_path, REWARD_TAIL_SCAN));
+                        if let Some(RewardLogEvent::BaselineRequested { relic_paths }) =
+                            adopted_reward_events.first()
+                        {
+                            log::info!(
+                                "reward: adopted {} relics from the EE.log tail",
+                                relic_paths.len()
                             );
                         }
                     }
@@ -1461,7 +1475,10 @@ pub(crate) fn run(
                 };
             }
         }
-        for event in reward_log.observe_bytes(&log_bytes) {
+        for event in adopted_reward_events
+            .into_iter()
+            .chain(reward_log.observe_bytes(&log_bytes))
+        {
             if generation.is_current() {
                 reward_session.handle_event(
                     event,
@@ -2537,6 +2554,12 @@ fn monitor_path_changed(
 /// nothing while the player reads, and the surrounding traffic is a few hundred KB a minute)
 /// without replaying an evening of history into anything.
 const KIOSK_TAIL_SCAN: u64 = 1024 * 1024;
+
+/// How much of EE.log to fold when recovering a relic round already under way at attach. The
+/// relics load right after the previous screen shuts down and the next one opens minutes later
+/// (about five in a Void Cascade, 1.4 MB of log on 2026-10-29), so this spans a full round of
+/// mission chatter.
+const REWARD_TAIL_SCAN: u64 = 2 * 1024 * 1024;
 
 /// The last stretch of a file, for one-shot state recovery. Any failure reads as "no tail":
 /// the caller simply learns nothing, which is where it started.
