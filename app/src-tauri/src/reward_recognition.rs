@@ -906,7 +906,7 @@ fn worker_loop(shared: Arc<Shared>) {
 
         // Returns true when this attempt recognized cards.
         let recognized = match outcome {
-            Some(Ok(read)) if read.len() >= 2 => {
+            Some(Ok(read)) if !read.is_empty() => {
                 let cards = read
                     .into_iter()
                     .map(|(name, confidence)| RewardObservation { name, confidence })

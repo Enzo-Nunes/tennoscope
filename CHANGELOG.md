@@ -21,6 +21,8 @@ see the difference.
   names still match as before.
 - **The Relics tab can sort by refinement.** Click the Refinement header to put Radiant relics
   first, and again for Intact first, like the value and gain columns.
+- **The reward overlay also shows when only one relic opened.** There is nothing to choose, but
+  the lone card's price, ducats and mastery are shown, without the "Top" marks.
 
 ### Fixed
 

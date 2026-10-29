@@ -205,9 +205,10 @@ fn read_capture_candidates<T>(
 ///
 /// Widest first, and that ordering is load-bearing: a two-card block sits exactly over a four-card
 /// block's middle two cards, so a four-card screen reads perfectly clean as "two cards" and would
-/// quietly lose half the rewards if two were tried first. A solo run is not tried at all: one card
-/// sits where a three-card screen's middle card sits, and a single reward is not a choice worth
-/// advising on anyway.
+/// quietly lose half the rewards if two were tried first. A single card is read too, last: when only
+/// one relic opens there is nothing to choose, but the card's value and mastery are still worth
+/// seeing. It sits exactly where a three-card screen's middle card sits, so it gets the same
+/// tiebreak as two cards against four: it is only taken when the three-card left slot read blank.
 ///
 /// Split out from the capture so it can be exercised against a real labelled screen instead of
 /// only against a live game.
@@ -229,9 +230,9 @@ pub fn read_cards_in(
         return Err("no reward candidates");
     }
     let (width, height) = image.dimensions();
-    // Up to three layouts per poll rather than one, so a poll off the reward screen costs
-    // three crops instead of one, about 200ms every two seconds. Narrow it by asking the log for
-    // the squad size if that ever shows up in a profile.
+    // Up to four layouts per poll rather than one. Each costs a crop or two, and polling only runs
+    // while the log says a reward screen is open. Narrow it by asking the log for the squad size if
+    // that ever shows up in a profile.
     let widest = read_cards_at(image, width, height, MAX_CARDS, candidates);
     if widest.is_ok() {
         return widest.map_err(|(_, reason)| reason);
@@ -242,17 +243,21 @@ pub fn read_cards_in(
     // genuinely nothing out there and the block really is narrower; any text at all means a wider
     // screen with a pool gap, and publishing its middle two as the whole screen would be a confident
     // half-answer. That case fails closed, exactly as it did before there was anything to guess.
-    let outside_the_block_is_empty = matches!(&widest, Err((0, BLANK_CARD)));
-    for cards in (2..MAX_CARDS).rev() {
+    // One card against three is the same ambiguity a layout narrower, settled the same way by the
+    // three-card slot 0. Nothing else is needed: the lone card sits between the four-card middle
+    // slots, and on a four- or two-card screen the three-card slot 0 overlaps a card and is not blank.
+    let mut left_slot_blank = [false; MAX_CARDS + 1];
+    left_slot_blank[MAX_CARDS] = matches!(&widest, Err((0, BLANK_CARD)));
+    for cards in (1..MAX_CARDS).rev() {
         // Dropping one card shifts the block half a pitch, so a layout two cards narrower is shifted
-        // a whole pitch and its slots land exactly on the widest layout's. Those are the ambiguous
+        // a whole pitch and its slots land exactly on the wider layout's. Those are the ambiguous
         // ones, and only those need the tiebreak.
-        let shares_slots_with_the_widest = (MAX_CARDS - cards) % 2 == 0;
-        if shares_slots_with_the_widest && !outside_the_block_is_empty {
-            break;
+        if left_slot_blank.get(cards + 2) == Some(&false) {
+            continue;
         }
-        if let Ok(read) = read_cards_at(image, width, height, cards, candidates) {
-            return Ok(read);
+        match read_cards_at(image, width, height, cards, candidates) {
+            Ok(read) => return Ok(read),
+            Err(failed) => left_slot_blank[cards] = matches!(failed, (0, BLANK_CARD)),
         }
     }
     widest.map_err(|(_, reason)| reason)

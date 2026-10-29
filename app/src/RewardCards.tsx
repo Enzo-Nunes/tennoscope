@@ -71,10 +71,12 @@ export function RewardCards({
   ownershipVerified?: boolean
   className?: string
 }) {
+  // A lone card has nothing to beat, so it is shown without either crown.
+  const choosing = cards.length > 1
   return <div className={className}>{cards.slice(0, 4).map((card, index) => {
     const uncertain = card.confidence < 0.8
-    const topPlat = !uncertain && bestValueIndex === index
-    const topDucat = !uncertain && bestDucatIndex === index
+    const topPlat = choosing && !uncertain && bestValueIndex === index
+    const topDucat = choosing && !uncertain && bestDucatIndex === index
     const marked = card.mastery ? { mark: card.mastery, state: ledgerState(card.mastery, uncertain) } : null
     return <article
       key={`${card.name}-${index}`}
