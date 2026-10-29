@@ -418,6 +418,27 @@ fn adopted_tail_ending_in_a_shutdown_arms_nothing() {
 }
 
 #[test]
+fn adopted_tail_ending_inside_a_reward_screen_reports_it_open() {
+    let mut lines = CASCADE_RELIC_LOADS.to_vec();
+    lines.push(CASCADE_OPEN);
+    let mut machine = RewardLogMachine::default();
+
+    assert_eq!(
+        machine.adopt_tail(&cascade_tail(&lines)),
+        vec![
+            RewardLogEvent::RewardWindowOpened,
+            RewardLogEvent::BaselineRequested {
+                relic_paths: cascade_relics(),
+            },
+        ]
+    );
+    assert_eq!(
+        machine.observe_line(CASCADE_SHUTDOWN),
+        vec![RewardLogEvent::Closed]
+    );
+}
+
+#[test]
 fn adopted_tail_ignores_its_partial_first_line() {
     // The fragment is the tail of a relic load the read started inside of; only the complete
     // load after it counts, so one relic alone does not request a baseline yet.

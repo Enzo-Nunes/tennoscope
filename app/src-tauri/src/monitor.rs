@@ -925,6 +925,11 @@ impl RewardSession {
                 {
                     let _ = procfs.reset_recent_writes(&process);
                 }
+                // The open line is what lets the reader start capturing; a vanished game has
+                // no screen to read.
+                if process.is_some() {
+                    self.recognition.observe(&event);
+                }
             }
             RewardLogEvent::ResponderExpected { identity } => {
                 self.scan_responder(identity, process, scope.policy, scope.generation);
@@ -1422,8 +1427,13 @@ pub(crate) fn run(
                         // started in between must recover them from the tail or it never captures.
                         adopted_reward_events =
                             reward_log.adopt_tail(&log_tail(ee_path, REWARD_TAIL_SCAN));
-                        if let Some(RewardLogEvent::BaselineRequested { relic_paths }) =
-                            adopted_reward_events.first()
+                        if let Some(relic_paths) =
+                            adopted_reward_events.iter().find_map(|event| match event {
+                                RewardLogEvent::BaselineRequested { relic_paths } => {
+                                    Some(relic_paths)
+                                }
+                                _ => None,
+                            })
                         {
                             log::info!(
                                 "reward: adopted {} relics from the EE.log tail",

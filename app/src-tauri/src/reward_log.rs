@@ -85,8 +85,9 @@ impl RewardLogMachine {
     /// rebuild landed 25 s before a Void Cascade screen) never saw those loads, held an empty
     /// pool, and captured nothing. The partial first line is dropped, the rest is replayed
     /// through a fresh machine that replaces this one, and a baseline is returned only when the
-    /// replay requested one with relics still loaded. A tail that ends after a shutdown arms
-    /// nothing, because the close cleared its relics.
+    /// replay requested one with relics still loaded. A tail that ends inside a reward screen
+    /// also reports it open, because the reader captures only while one is. A tail that ends
+    /// after a shutdown arms nothing, because the close cleared its relics.
     pub fn adopt_tail(&mut self, bytes: &[u8]) -> Vec<RewardLogEvent> {
         let complete = bytes
             .iter()
@@ -96,13 +97,16 @@ impl RewardLogMachine {
         replayed.observe_bytes(&bytes[complete..]);
         replayed.carry.clear();
         *self = replayed;
-        if self.baseline_requested && !self.loaded_relics.is_empty() {
-            vec![RewardLogEvent::BaselineRequested {
-                relic_paths: self.loaded_relics.clone(),
-            }]
-        } else {
-            Vec::new()
+        let mut events = Vec::new();
+        if self.reward_window_open {
+            events.push(RewardLogEvent::RewardWindowOpened);
         }
+        if self.baseline_requested && !self.loaded_relics.is_empty() {
+            events.push(RewardLogEvent::BaselineRequested {
+                relic_paths: self.loaded_relics.clone(),
+            });
+        }
+        events
     }
 
     pub fn observe_line(&mut self, line: &str) -> Vec<RewardLogEvent> {
