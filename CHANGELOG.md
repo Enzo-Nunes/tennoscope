@@ -16,6 +16,16 @@ see the difference.
 
 ### Added
 
+- **The Collection tab filters to copies worth selling.** Four filters combine with search,
+  category and the ownership filters. **2+ copies** keeps a row holding at least two copies,
+  counted per rank, because the market prices each rank on its own. **Unequipped** keeps a row
+  with a copy installed in no build, and an **Equipped ×N** mark on the card counts the copies
+  that are. **Unranked** keeps the unranked mods and arcanes, which also hold every rank-0 copy.
+  **Min price** keeps copies priced at 3, 5, 10 or 20 platinum or more, and above Any it drops
+  rows with no price, as Tradeable does. The steps follow one account's held mods, where 328
+  sat at 3-4p and 41 at 20p or more. 2+ copies and Unequipped need Full access, like the
+  quantities they read. Unequipped and the mark appear after the next inventory read, because
+  copies stored before this release were never counted.
 - **The Orders tab checks set listings against the parts you hold.** A set row now says
   "Parts for 1 of 3 sets" with a Lower to 1 fix, or "Parts missing",
   instead of always reading Unverifiable. Parts you list on their own count first, so a part

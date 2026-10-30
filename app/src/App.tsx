@@ -38,7 +38,7 @@ import { MetalMark } from './MetalMark'
 import { OrdersView } from './OrdersView'
 import { isListable, listedLabel, listedOrderFor } from './orders'
 import { SellForm, type SellHandler, type UpdateHandler } from './SellForm'
-import { atMaxRank, clampPage, collectionTotals, COLLECTION_PAGE_SIZE, ducatsPerPlatinum, masteryOrder, pageCount, pageItems, pageNumbers, rankLabel, stackValue } from './collection'
+import { atMaxRank, clampPage, collectionTotals, COLLECTION_PAGE_SIZE, ducatsPerPlatinum, hasEquipData, hasUnequippedCopy, isUnrankedUpgrade, masteryOrder, meetsMinPrice, MIN_PRICE_STEPS, pageCount, pageItems, pageNumbers, rankLabel, stackValue } from './collection'
 import { MAX_PRICE_FLOOR, readPriceFloor, readShowDucats, writePriceFloor, writeShowDucats } from './settings'
 import { snapshotFreshness, stampReading } from './freshness'
 import { bootUpdateChecks } from './updateStore'
@@ -48,7 +48,7 @@ import { reportBlockVisible } from './reportable'
 import { AccessSelector } from './AccessSelector'
 import { RelicPlanner } from './RelicPlanner'
 import { accessMode } from './access'
-import { isPageNumber, isString, oneOf, useRemembered } from './remembered'
+import { isBoolean, isPageNumber, isString, oneOf, useRemembered } from './remembered'
 
 type Page = 'collection' | 'mastery' | 'relics' | 'rewards' | 'orders' | 'diagnostics' | 'settings' | 'about'
 const OWNERSHIPS = ['all', 'owned', 'mastered', 'missing', 'tradeable'] as const
@@ -615,6 +615,16 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
   const [ownership, setOwnership] = useRemembered<Ownership>('collection.ownership', 'all', oneOf(OWNERSHIPS))
   const [sort, setSort] = useRemembered<Sort>('collection.sort', 'name-asc', oneOf(sortOptions.map(option => option.value)))
   const [page, setPage] = useRemembered('collection.page', 1, isPageNumber, 'session')
+  const [spareOnly, setSpareOnly] = useRemembered('collection.spare', false, isBoolean)
+  const [unequippedOnly, setUnequippedOnly] = useRemembered('collection.unequipped', false, isBoolean)
+  const [unrankedOnly, setUnrankedOnly] = useRemembered('collection.unranked', false, isBoolean)
+  const [minPrice, setMinPrice] = useRemembered('collection.minPrice', 0, oneOf(MIN_PRICE_STEPS))
+  const equipKnown = ownershipVerified && hasEquipData(view.collection.items)
+  // The filter reads these, never the toggles: a toggle hidden by an access change, or by a
+  // snapshot that predates the count, must stop filtering in the same render it disappears. The
+  // toggles themselves are remembered rather than cleared, so they come back pressed with the data.
+  const spare = spareOnly && ownershipVerified
+  const unequipped = unequippedOnly && equipKnown
   const {
     masteryEligible,
     mastered,
@@ -634,6 +644,10 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
         || (ownership === 'mastered' && (item.mastered || item.item_mastered === true))
         || (ownership === 'missing' && item.quantity === 0)
         || (ownership === 'tradeable' && item.platinum !== undefined))
+      .filter(item => !spare || item.quantity >= 2)
+      .filter(item => !unequipped || hasUnequippedCopy(item))
+      .filter(item => !unrankedOnly || isUnrankedUpgrade(item))
+      .filter(item => meetsMinPrice(item, minPrice))
       .toSorted((left, right) => sort === 'quantity-desc'
         ? right.quantity - left.quantity || left.name.localeCompare(right.name)
         : sort === 'category-asc'
@@ -647,7 +661,7 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
                 : sort === 'ducat-ratio-desc'
                   ? ducatRatioRank(right) - ducatRatioRank(left) || (right.ducats ?? -1) - (left.ducats ?? -1) || left.name.localeCompare(right.name)
                   : left.name.localeCompare(right.name))
-  }, [view.collection.items, search, category, ownership, sort])
+  }, [view.collection.items, search, category, ownership, spare, unequipped, unrankedOnly, minPrice, sort])
   const totalPages = pageCount(filtered.length)
   const currentPage = clampPage(page, filtered.length)
   const visibleItems = pageItems(filtered, currentPage)
@@ -685,7 +699,7 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
   useEffect(() => {
     if (!ownershipVerified) setOwnership('all')
   }, [ownershipVerified, setOwnership])
-  useResetOnChange(() => setPage(1), [search, category, ownership, sort])
+  useResetOnChange(() => setPage(1), [search, category, ownership, spare, unequipped, unrankedOnly, minPrice, sort])
   useEffect(() => setPage(value => clampPage(value, filtered.length)), [filtered.length, setPage])
 
   return <section className="page" aria-labelledby="collection-title">
@@ -774,14 +788,34 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
           from the left. An engraved hairline is what this system already uses to divide the sheet,
           so a reading struck into one needs no new component and nothing that spins. */}
       <div className="register-bar" style={inProgress ? { '--assay-progress': inProgress.done / Math.max(inProgress.total, 1) } as CSSProperties : undefined}>
-        {ownershipVerified && <div className="tally" role="group" aria-label="Ownership filters">
-          {OWNERSHIPS.map(filter => <button
-            type="button"
-            key={filter}
-            aria-pressed={ownership === filter}
-            onClick={() => setOwnership(filter)}
-          >{filter[0].toUpperCase() + filter.slice(1)}</button>)}
-        </div>}
+        <div className="register-filters">
+          {ownershipVerified && <div className="tally" role="group" aria-label="Ownership filters">
+            {OWNERSHIPS.map(filter => <button
+              type="button"
+              key={filter}
+              aria-pressed={ownership === filter}
+              onClick={() => setOwnership(filter)}
+            >{filter[0].toUpperCase() + filter.slice(1)}</button>)}
+          </div>}
+          {/* Each narrows on its own and they combine. A seller's view is 2+ copies, Unequipped
+              and a minimum price, and pressing one never releases another. */}
+          <div className="tally" role="group" aria-label="Copy filters">
+            {ownershipVerified && <button type="button" aria-pressed={spareOnly} onClick={() => setSpareOnly(value => !value)}>2+ copies</button>}
+            {equipKnown && <button type="button" aria-pressed={unequippedOnly} onClick={() => setUnequippedOnly(value => !value)}>Unequipped</button>}
+            <button type="button" aria-pressed={unrankedOnly} onClick={() => setUnrankedOnly(value => !value)}>Unranked</button>
+          </div>
+          <div className="min-price-slot" role="group" aria-label="Minimum price">
+            <span>Min price</span>
+            <div className="tally">
+              {MIN_PRICE_STEPS.map(step => <button
+                type="button"
+                key={step}
+                aria-pressed={minPrice === step}
+                onClick={() => setMinPrice(step)}
+              >{step ? <><MetalMark metal="plat" alt="platinum "/>{step}+</> : 'Any'}</button>)}
+            </div>
+          </div>
+        </div>
         <div className="provenance-row">
           <div className="register-status">
             <span className="register-line">{dumpDate ? `Prices from the ${shortDumpDate(dumpDate)} market summary` : 'No price summary loaded yet'}</span>
@@ -961,6 +995,9 @@ function CollectionEntry({ item, ownershipVerified, showDucats, listedOrder, sel
             ? <span className="hallmark absent">Missing</span>
             : <span className="hallmark owned">Owned ×{item.quantity}</span>
           : null}
+        {/* Under Owned, a step behind it: how many of those copies sit in a build. None in use and
+            not known are both no mark, so the mark only ever states a count that was read. */}
+        {ownershipVerified && (item.equipped ?? 0) > 0 && <span className="hallmark">Equipped ×{item.equipped}</span>}
         {rankLabel(item) && <span className={`hallmark rank${atMaxRank(item) ? ' maxed' : ''}`}>{rankLabel(item)}</span>}
         {ownershipVerified && item.mastered && <span className="hallmark mastered">Mastered</span>}
         {ownershipVerified && item.item_mastered && <span className="hallmark mastered">Item mastered</span>}
