@@ -388,12 +388,11 @@ fn a_stacked_reward_matches_the_item_it_stacks() {
     assert!(!reward_name_matches("Forma Blueprint", "X Forma Blueprint"));
 }
 
-/// The kiosk reads the game's own labels and joins prices against warframe.market's, and both
+/// The reward reader reads the game's own labels and joins prices against warframe.market's, and both
 /// spell a prime Frame's tradable part by its blueprint: "Styanax Prime Neuroptics Blueprint".
-/// The component loop named it after the part the blueprint builds, so the kiosk's closed-set
+/// The component loop named it after the part the blueprint builds, so the closed-set
 /// match landed on the nearest shorter name ("Styanax Prime Neuroptics", a different item) and
-/// the price join, keyed by the market spelling, found nothing: the tile went unpriced while its
-/// basket row showed a dash (2026-08-24). Weapon parts are built items in both vocabularies and
+/// the price join, keyed by the market spelling, found nothing (2026-08-24). Weapon parts are built items in both vocabularies and
 /// keep their bare names.
 #[test]
 fn a_prime_frames_components_are_named_by_their_blueprint() {
@@ -421,8 +420,8 @@ fn a_prime_frames_components_are_named_by_their_blueprint() {
     assert!(!names.iter().any(|name| name == "Lavos Prime Chassis"));
 }
 
-/// The kiosk reads an Archwing's Wings tile by its blueprint name. Without that name in the closed
-/// set, a clean read lands on the Harness Blueprint and the tile shows the Harness price.
+/// The game labels an Archwing's Wings by its blueprint name. Without that name in the closed
+/// set, a clean read lands on the Harness Blueprint and shows the Harness price.
 #[test]
 fn an_archwings_wings_are_named_by_their_blueprint() {
     const WINGS_BP: &str =

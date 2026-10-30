@@ -43,10 +43,6 @@ fn set_matched_rect(snapshot: &std::sync::Mutex<Option<WindowRect>>, rect: Windo
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(rect);
 }
 
-pub(crate) fn publish_latest_matched_rect(rect: WindowRect) {
-    set_matched_rect(&LATEST_MATCHED_RECT, rect);
-}
-
 fn clear_matched_rect(snapshot: &std::sync::Mutex<Option<WindowRect>>) {
     *snapshot
         .lock()
@@ -500,18 +496,6 @@ pub fn ocr_crop(image: &Path) -> Result<String, &'static str> {
     run_tesseract(image, "11", None)
 }
 
-/// Kiosk label slots: `--psm 6`, one uniform block of text.
-///
-/// The deliberate counterpart to [`ocr_crop`]'s `psm 11`, not a contradiction of it. Reward
-/// title bands are mostly empty room with a possible speck, and `psm 6` calls the speck the
-/// block. Kiosk label crops are the inverse: the label fills the bottom of the crop and the
-/// card art fills the top, and bright art is a large white mass, not a speck. Under `psm 11`
-/// that mass joins the segmentation and eats any glyphs touching it; `psm 6` makes the
-/// narrower claim (one ordered block) for a one-label crop.
-pub fn ocr_crop_block(image: &Path) -> Result<String, &'static str> {
-    run_tesseract(image, "6", None)
-}
-
 fn run_tesseract(
     image: &Path,
     page_segmentation_mode: &str,
@@ -527,7 +511,7 @@ fn run_tesseract(
     #[cfg(windows)]
     command.creation_flags(0x0800_0000);
     // One recognition thread per spawn: tesseract's own OpenMP pooling oversubscribes the
-    // machine when several crops are read side by side, and the kiosk poller does exactly that.
+    // machine when several crops are read side by side, as the reward reader does.
     command.env("OMP_THREAD_LIMIT", "1");
     // The bundled engine's `eng.traineddata` sits beside it, not in the install prefix it was
     // compiled with, so it has to be told where to look. `--tessdata-dir` rather than the

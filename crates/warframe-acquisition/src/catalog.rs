@@ -228,10 +228,10 @@ impl CatalogIndex {
             if !is_prime_parent(&parent.name) {
                 continue;
             }
-            // A prime Frame's tradable parts are their blueprints: the game's kiosk labels one
+            // A prime Frame's tradable parts are their blueprints: the game's reward screen labels one
             // "Styanax Prime Neuroptics Blueprint" and warframe.market sells it under that name,
             // while WFCD's component list names the part the blueprint builds. Spell it the way
-            // the two vocabularies that price and read it do, or the kiosk's closed-set match
+            // the two vocabularies that price and read it do, or the reader's closed-set match
             // lands on the shorter built-part name (a different item) and the price join, keyed
             // by the market spelling, finds nothing. Weapon parts drop as built items whose two
             // spellings already agree.

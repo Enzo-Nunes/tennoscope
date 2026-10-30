@@ -14,8 +14,8 @@ use warframe_acquisition::{
     MasteryLedger, PriceTable, StageState,
 };
 use warframe_domain::{
-    CatalogItem, Category, Collection, DomainError, InventoryEntry, InventorySnapshot,
-    KioskMastery, MasteryMark, RewardAdvisor, RewardCandidate, RewardView,
+    CatalogItem, Category, Collection, DomainError, InventoryEntry, InventorySnapshot, MasteryMark,
+    RewardAdvisor, RewardCandidate, RewardView,
 };
 use warframe_market::{CredentialBacking, MarketItems, MarketOrder, OrderKind};
 use warframe_status::Presence;
@@ -72,12 +72,6 @@ impl MasteryView {
     pub fn reward_mark(&self, reward_name: &str) -> Option<MasteryMark> {
         let catalog = self.catalog.as_deref()?;
         MasteryLedger::new(catalog, &self.holdings, self.facts.as_ref()).reward_mark(reward_name)
-    }
-
-    /// The strip a kiosk tile carries, or nothing without live facts or for mastered parts.
-    pub fn kiosk_mastery(&self, part_name: &str) -> Option<KioskMastery> {
-        let catalog = self.catalog.as_deref()?;
-        MasteryLedger::new(catalog, &self.holdings, self.facts.as_ref()).kiosk_mastery(part_name)
     }
 }
 
@@ -168,7 +162,7 @@ impl AppCore {
     }
 
     /// A snapshot of what mastery marks may say, taken once per overlay publish. The
-    /// collection loads once here so a reward and a kiosk tile never disagree mid-render.
+    /// collection loads once here so the cards on one screen never disagree mid-render.
     pub fn mastery_view(&self) -> Result<MasteryView, AppError> {
         let collection = self.store.load_collection()?;
         Ok(MasteryView {

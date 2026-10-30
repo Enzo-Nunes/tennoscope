@@ -1238,7 +1238,7 @@ function MasteryMarksSetting() {
   return <div className="setting">
     <div>
       <h3>Mastery marks on overlays</h3>
-      <p className="prose">On the reward screen, each Prime part's slip says whether the item it builds is mastered, built, in the foundry or still unmastered, and draws the set behind an unmastered one. On the Ducat Kiosk, a part of an item you have not mastered, built or started building gets a strip with its price. Full access shows every mark after an inventory sync; Overlay access shows only what you have already mastered.</p>
+      <p className="prose">On the reward screen, each Prime part's slip says whether the item it builds is mastered, built, in the foundry or still unmastered, and draws the set behind an unmastered one. Full access shows every mark after an inventory sync; Overlay access shows only what you have already mastered.</p>
     </div>
     <button
       type="button"

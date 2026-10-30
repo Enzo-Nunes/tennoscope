@@ -41,19 +41,6 @@ right now, without taking focus from the game.
 
 <div align="center">
 
-## Ducat Kiosk overlay
-
-</div>
-
-Before you trade a Prime part for ducats, check what it is worth in platinum. TennoScope
-puts a platinum figure on every tile of the grid, carries each pick into the sell list, and
-totals the sell list as it fills. With Full access, tiles for parts of items you have not
-mastered, built or started building read Unmastered beside the price.
-
-![The Ducat Kiosk overlay, with a platinum figure or an Unmastered strip on every Prime part tile, the picked items and their values in a sell list on the right, and a running total at the bottom](docs/screenshots/ducat-kiosk.png)
-
-<div align="center">
-
 ## Collection
 
 </div>

@@ -31,11 +31,6 @@ use warframe_acquisition::LinuxProc as GameMemory;
 use warframe_acquisition::WindowsProc as GameMemory;
 
 mod access;
-mod kiosk_geometry;
-mod kiosk_log;
-mod kiosk_ocr;
-mod kiosk_scroll;
-mod kiosk_view;
 #[cfg(target_os = "linux")]
 pub mod linux_renderer;
 pub mod market_account;
@@ -55,11 +50,7 @@ mod reward_source;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod update;
 pub use access::{AccessMode, AccessPolicy};
-pub use kiosk_ocr::{BasketRow, GridCell};
-pub use kiosk_view::{KioskState, KioskView};
-pub use overlay_window::{
-    OverlayGeometry, WindowRect, kiosk_overlay_geometry, placement_notice, reward_overlay_geometry,
-};
+pub use overlay_window::{OverlayGeometry, WindowRect, placement_notice, reward_overlay_geometry};
 pub use preferences::Preferences;
 pub use reward_capture::x11::{largest_warframe_window, warframe_window_from_xwininfo_tree};
 pub use reward_log::{RewardLogEvent, RewardLogMachine};
@@ -2058,14 +2049,6 @@ fn hide_reward_overlay(app: AppHandle) {
     overlay_window::hide_reward_overlay(&app);
 }
 
-/// The kiosk window pulls the latest epoch through this rather than receiving the payload in the
-/// event, so a missed `kiosk-updated` (window still loading, webview busy) costs one fetch
-/// instead of a stale overlay until the next poll.
-#[tauri::command]
-fn get_kiosk_view(kiosk: State<'_, KioskState>) -> Option<KioskView> {
-    kiosk.get()
-}
-
 /// The Relics tab's plan for the settings it shows: currency and squad size.
 ///
 /// The first call starts loading the drop tables and answers `loading`; the tab asks again until
@@ -2148,7 +2131,7 @@ pub fn run() {
         std::panic::set_hook(Box::new(move |info| {
             let thread = std::thread::current();
             log::error!(
-                "[DEBUG-kiosk] panic in thread {}: {info}",
+                "[DEBUG] panic in thread {}: {info}",
                 thread.name().unwrap_or("<unnamed>")
             );
             default_hook(info);
@@ -2252,9 +2235,6 @@ pub fn run() {
                 .map(|state| current_setup_status(state.setup.clone(), state.game_running))
                 .unwrap_or_default();
             app.manage(runtime);
-            // The kiosk window's whole IPC surface: `get_kiosk_view` pulls whatever the poller
-            // last published, so the cell exists from the start, empty until a kiosk opens.
-            app.manage(kiosk_view::KioskState::default());
             app.manage(relic_plan::RelicPlanState::default());
             if let Some(access_mode) = startup.access_mode {
                 start_collection_prices(Arc::clone(app.state::<SharedRuntime>().inner()));
@@ -2302,7 +2282,6 @@ pub fn run() {
             load_fake_session,
             show_reward_overlay,
             hide_reward_overlay,
-            get_kiosk_view,
             get_relic_plan,
             market_status,
             market_sign_in,
@@ -2325,68 +2304,6 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-#[cfg(test)]
-mod live_bench {
-    use crate::{kiosk_ocr, reward_capture::GameCapture};
-    use image::GenericImageView;
-    use std::time::Instant;
-
-    /// Live-machine cost of one whole kiosk pass. Ignored by default: needs the game running.
-    #[test]
-    #[ignore]
-    fn bench_live_kiosk_pass() {
-        let candidates: Vec<warframe_acquisition::RewardCatalogEntry> = std::iter::repeat_n(
-            warframe_acquisition::RewardCatalogEntry {
-                name: "Fulmin Prime Receiver".into(),
-                ducats: 100,
-            },
-            12,
-        )
-        .collect();
-
-        let t0 = Instant::now();
-        let frame = GameCapture::new()
-            .capture_candidates()
-            .expect("capture")
-            .into_iter()
-            .next()
-            .expect("game capture candidate")
-            .image;
-        println!("capture: {:?}", t0.elapsed());
-
-        let (w, h) = frame.dimensions();
-        println!("frame: {w}x{h}");
-
-        let t1 = Instant::now();
-        let dy: i32 = std::env::var("KIOSK_BENCH_DY")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
-        println!("bench dy: {dy}");
-        let cells = kiosk_ocr::read_grid(&frame, &candidates, dy);
-        println!(
-            "read_grid (24 crops): {:?} -> {} cells",
-            t1.elapsed(),
-            cells.len()
-        );
-
-        let t2 = Instant::now();
-        let rows = kiosk_ocr::read_basket(&frame, &candidates);
-        for row in &rows {
-            println!(
-                "  basket row {} = {:?} score {:.2}",
-                row.index, row.name, row.score
-            );
-        }
-        println!(
-            "read_basket (8 crops): {:?} -> {} rows",
-            t2.elapsed(),
-            rows.len()
-        );
-        println!("TOTAL pass: {:?}", t0.elapsed());
-    }
 }
 
 #[cfg(test)]

@@ -36,7 +36,7 @@ The two block each other; emerge one or the other.
 
 Both pull in the WebKitGTK stack, plus `x11-misc/xdg-utils`, which the Diagnostics report's
 issue link and saved-report folder shell out to through `xdg-open`, plus `app-text/tesseract`,
-the OCR engine behind the reward cards and the Ducat Kiosk reads, whose English data is
+the OCR engine behind the reward cards, whose English data is
 installed unconditionally. ImageMagick is no longer needed.
 
 `x11-apps/xwininfo` is the other external program the reward reader spawns, and unlike tesseract it

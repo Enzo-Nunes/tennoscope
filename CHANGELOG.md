@@ -24,6 +24,12 @@ see the difference.
 - **The reward overlay also shows when only one relic opened.** There is nothing to choose, but
   the lone card's price, ducats and mastery are shown, without the "Top" marks.
 
+### Removed
+
+- **The Ducat Kiosk overlay is gone.** The platinum figures and Unmastered strips over the
+  in-game kiosk grid, and the sell list total, are no longer drawn. The Collection tab is where
+  to decide what to sell for ducats.
+
 ### Fixed
 
 - **The Relics tab lists every relic again.** Relics released since the app's relic data was last

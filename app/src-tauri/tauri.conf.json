@@ -37,22 +37,6 @@
         "skipTaskbar": true,
         "resizable": false,
         "fullscreen": false
-      },
-      {
-        "label": "kiosk-overlay",
-        "title": "TennoScope: Ducat Kiosk",
-        "url": "/kiosk",
-        "width": 1920,
-        "height": 1080,
-        "visible": false,
-        "transparent": true,
-        "decorations": false,
-        "alwaysOnTop": true,
-        "focus": false,
-        "focusable": false,
-        "skipTaskbar": true,
-        "resizable": false,
-        "fullscreen": false
       }
     ],
     "security": {

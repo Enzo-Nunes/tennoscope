@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use common::recipes::*;
 use warframe_acquisition::{CatalogIndex, Holdings, MasteryEvidence, MasteryFacts, MasteryLedger};
-use warframe_domain::{KioskMastery, MasteryMark, SetPart};
+use warframe_domain::{MasteryMark, SetPart};
 
 fn holdings(quantity: &[(&str, u32)], mastered: &[&str]) -> Holdings {
     Holdings::from_parts(
@@ -178,11 +178,6 @@ fn a_mastered_ingredient_still_counts_toward_its_unmastered_consumer() {
             completes: false, // the chain view never claims a set completes
         })
     );
-    assert_eq!(
-        ledger.kiosk_mastery("Bronco Prime Barrel"),
-        None,
-        "Bronco Prime itself is mastered, so its parts get no kiosk strip"
-    );
 }
 
 #[test]
@@ -311,25 +306,4 @@ fn no_collection_means_unknown_and_non_mastery_items_get_no_mark() {
     assert_eq!(ledger.reward_mark("Forma Blueprint"), None);
     assert_eq!(ledger.reward_mark("Kavasa Prime Kubrow Collar Band"), None);
     assert_eq!(ledger.reward_mark("Not An Item"), None);
-}
-
-#[test]
-fn kiosk_mastery_reports_held_and_uses_for_live_unmastered_parts_only() {
-    let catalog = catalog();
-    let held = holdings(&[(GUANDAO_BLADE, 1)], &[]);
-    let facts = live(&[], &[]);
-    assert_eq!(
-        MasteryLedger::new(&catalog, &held, Some(&facts)).kiosk_mastery("Guandao Prime Blade"),
-        Some(KioskMastery { held: 1, uses: 2 })
-    );
-    let mastered = holdings(&[(GUANDAO_BLADE, 1)], &[GUANDAO]);
-    assert_eq!(
-        MasteryLedger::new(&catalog, &mastered, Some(&facts)).kiosk_mastery("Guandao Prime Blade"),
-        None
-    );
-    assert_eq!(
-        MasteryLedger::new(&catalog, &held, None).kiosk_mastery("Guandao Prime Blade"),
-        None,
-        "kiosk strips need live evidence"
-    );
 }

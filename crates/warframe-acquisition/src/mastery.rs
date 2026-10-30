@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use warframe_domain::{InventoryEntry, KioskMastery, MasteryMark, SetPart};
+use warframe_domain::{InventoryEntry, MasteryMark, SetPart};
 
 use crate::{CatalogIndex, ComponentKind, MasteryFacts, Recipe, RecipeComponent, mastery_rank};
 
@@ -61,7 +61,7 @@ impl Holdings {
 }
 
 /// Turns a catalog, a collection and this run's facts into the mark each reward carries. A
-/// saved collection proves mastery but never a missing part, so kiosk strips need live facts.
+/// saved collection proves mastery but never a missing part.
 pub struct MasteryLedger<'a> {
     catalog: &'a CatalogIndex,
     holdings: &'a Holdings,
@@ -107,28 +107,6 @@ impl<'a> MasteryLedger<'a> {
                 }
             }
             MasteryEvidence::Live => Some(self.live_mark(recipe, slot_index)),
-        }
-    }
-
-    /// Counts for a kiosk strip, only under live facts and only while the part's own item is not
-    /// mastered, built or in the foundry, so never for a chain mark.
-    pub fn kiosk_mastery(&self, part_name: &str) -> Option<KioskMastery> {
-        if self.evidence() != MasteryEvidence::Live {
-            return None;
-        }
-        match self.reward_mark(part_name)? {
-            MasteryMark::Unmastered {
-                subject: None,
-                parts,
-                ..
-            } => {
-                let this = parts.iter().find(|slot| slot.this)?;
-                Some(KioskMastery {
-                    held: this.held,
-                    uses: this.uses,
-                })
-            }
-            _ => None,
         }
     }
 
