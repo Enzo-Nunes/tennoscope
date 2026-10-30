@@ -61,8 +61,8 @@ describe('order flags', () => {
   it('counts a set listing’s shortfall in sets', () => {
     const set = (status: ReconciledOrder['status'], quantity: number) =>
       ({ ...entry('s', status, { quantity }), name: 'Braton Prime Set', is_set: true })
-    expect(statusLabel(set({ state: 'missing' }, 1))).toBe('You no longer hold every part')
-    expect(statusLabel(set({ state: 'overshoot', owned: 1 }, 3))).toBe('Your parts complete 1 of 3 sets')
+    expect(statusLabel(set({ state: 'missing' }, 1))).toBe('Parts missing')
+    expect(statusLabel(set({ state: 'overshoot', owned: 1 }, 3))).toBe('Parts for 1 of 3 sets')
     expect(fixLabel({ state: 'overshoot', owned: 1 })).toBe('Lower to 1')
   })
 

@@ -23,10 +23,10 @@ export function isFlagged(status: OrderStatus): boolean {
 export function statusLabel(entry: ReconciledOrder): string | null {
   switch (entry.status.state) {
     case 'missing':
-      return entry.is_set ? 'You no longer hold every part' : 'You no longer own this'
+      return entry.is_set ? 'Parts missing' : 'You no longer own this'
     case 'overshoot':
       return entry.is_set
-        ? `Your parts complete ${entry.status.owned} of ${entry.order.quantity} sets`
+        ? `Parts for ${entry.status.owned} of ${entry.order.quantity} sets`
         : `You own ${entry.status.owned} of ${entry.order.quantity} listed`
     case 'unverifiable':
       return 'Unverifiable'

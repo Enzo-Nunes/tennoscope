@@ -17,7 +17,7 @@ see the difference.
 ### Added
 
 - **The Orders tab checks set listings against the parts you hold.** A set row now says
-  "Your parts complete 1 of 3 sets" with a Lower to 1 fix, or "You no longer hold every part",
+  "Parts for 1 of 3 sets" with a Lower to 1 fix, or "Parts missing",
   instead of always reading Unverifiable. Parts you list on their own count first, so a part
   listed beside a set it completes is not counted twice. Covers Prime sets and most non-Prime
   ones (Wraith, Vandal, Sentient and similar); sets the catalogue cannot describe stay
