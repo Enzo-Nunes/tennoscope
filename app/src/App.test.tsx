@@ -516,6 +516,26 @@ describe('MVP desktop interface', () => {
     expect(screen.getByRole('article', { name: 'Forma Blueprint' })).toHaveTextContent('Missing')
   })
 
+  it('keeps the search, filters and sort when leaving the collection and coming back', async () => {
+    backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Your collection' })
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search collection' }), 'prime')
+    await userEvent.click(screen.getByRole('button', { name: 'Prime Parts' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Owned' }))
+    await userEvent.click(within(screen.getByRole('group', { name: 'Sort collection' })).getByRole('button', { name: 'Quantity' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Mastery' }))
+    await screen.findByRole('heading', { name: 'Mastery' })
+    await userEvent.click(screen.getByRole('button', { name: 'Collection' }))
+    await screen.findByRole('heading', { name: 'Your collection' })
+
+    expect(screen.getByRole('searchbox', { name: 'Search collection' })).toHaveValue('prime')
+    expect(screen.getByRole('button', { name: 'Prime Parts' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Owned' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(screen.getByRole('group', { name: 'Sort collection' })).getByRole('button', { name: 'Quantity' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('supports every stable category and sortable collection results', async () => {
     backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
     render(<App />)

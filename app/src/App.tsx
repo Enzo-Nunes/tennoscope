@@ -48,9 +48,11 @@ import { reportBlockVisible } from './reportable'
 import { AccessSelector } from './AccessSelector'
 import { RelicPlanner } from './RelicPlanner'
 import { accessMode } from './access'
+import { isPageNumber, isString, oneOf, useRemembered } from './remembered'
 
 type Page = 'collection' | 'mastery' | 'relics' | 'rewards' | 'orders' | 'diagnostics' | 'settings' | 'about'
-type Ownership = 'all' | 'owned' | 'mastered' | 'missing' | 'tradeable'
+const OWNERSHIPS = ['all', 'owned', 'mastered', 'missing', 'tradeable'] as const
+type Ownership = typeof OWNERSHIPS[number]
 type Sort = 'name-asc' | 'quantity-desc' | 'category-asc' | 'mastery-asc' | 'platinum-desc' | 'ducats-desc' | 'ducat-ratio-desc'
 
 const categories: Array<{ value: ItemCategory | 'all'; label: string; tally: string }> = [
@@ -587,6 +589,20 @@ function LoadingView() {
   </section>
 }
 
+/** Runs `reset` when any of `inputs` changes, but not on mount: a page returned to keeps the page of
+ * results it was left on, and only a new search, filter or sort starts back at the first. Comparing
+ * against the last inputs seen, rather than skipping the first run, holds under StrictMode's double
+ * mount too. */
+function useResetOnChange(reset: () => void, inputs: unknown[]) {
+  const key = JSON.stringify(inputs)
+  const last = useRef(key)
+  useEffect(() => {
+    if (last.current === key) return
+    last.current = key
+    reset()
+  }, [key, reset])
+}
+
 /** How long a page has to stay in view before it is priced live: long enough that paging or typing
  * through results does not start a pass per keystroke. */
 const AUTO_PRICE_DELAY_MS = 1200
@@ -594,11 +610,11 @@ const AUTO_PRICE_DELAY_MS = 1200
 function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor, showDucats, onToggleDucats, onSell, onUpdate, ordersBusy }: { view: AppView; effectiveMode: AccessMode; pricing: boolean; onPriceLive: (ids: string[]) => void; priceFloor: number; showDucats: boolean; onToggleDucats: () => void; onSell: SellHandler; onUpdate: UpdateHandler; ordersBusy: boolean }) {
   const ownershipVerified = effectiveMode === 'full'
   const snapshotOnly = !ownershipVerified
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState<ItemCategory | 'all'>('all')
-  const [ownership, setOwnership] = useState<Ownership>('all')
-  const [sort, setSort] = useState<Sort>('name-asc')
-  const [page, setPage] = useState(1)
+  const [search, setSearch] = useRemembered('collection.search', '', isString, 'session')
+  const [category, setCategory] = useRemembered<ItemCategory | 'all'>('collection.category', 'all', oneOf(categories.map(entry => entry.value)))
+  const [ownership, setOwnership] = useRemembered<Ownership>('collection.ownership', 'all', oneOf(OWNERSHIPS))
+  const [sort, setSort] = useRemembered<Sort>('collection.sort', 'name-asc', oneOf(sortOptions.map(option => option.value)))
+  const [page, setPage] = useRemembered('collection.page', 1, isPageNumber, 'session')
   const {
     masteryEligible,
     mastered,
@@ -665,12 +681,12 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
   const sorts = showDucats ? sortOptions : sortOptions.filter(option => option.metal !== 'ducat')
   useEffect(() => {
     if (!showDucats && (sort === 'ducats-desc' || sort === 'ducat-ratio-desc')) setSort('platinum-desc')
-  }, [showDucats, sort])
+  }, [showDucats, sort, setSort])
   useEffect(() => {
     if (!ownershipVerified) setOwnership('all')
-  }, [ownershipVerified])
-  useEffect(() => setPage(1), [search, category, ownership, sort])
-  useEffect(() => setPage(value => clampPage(value, filtered.length)), [filtered.length])
+  }, [ownershipVerified, setOwnership])
+  useResetOnChange(() => setPage(1), [search, category, ownership, sort])
+  useEffect(() => setPage(value => clampPage(value, filtered.length)), [filtered.length, setPage])
 
   return <section className="page" aria-labelledby="collection-title">
     <div className="mark-head">
@@ -759,7 +775,7 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
           so a reading struck into one needs no new component and nothing that spins. */}
       <div className="register-bar" style={inProgress ? { '--assay-progress': inProgress.done / Math.max(inProgress.total, 1) } as CSSProperties : undefined}>
         {ownershipVerified && <div className="tally" role="group" aria-label="Ownership filters">
-          {(['all', 'owned', 'mastered', 'missing', 'tradeable'] as const).map(filter => <button
+          {OWNERSHIPS.map(filter => <button
             type="button"
             key={filter}
             aria-pressed={ownership === filter}
@@ -807,10 +823,10 @@ const masterySortOptions: Array<{ value: MasterySort; label: string }> = [
 ]
 
 function MasteryPage({ view, onSell, onUpdate, ordersBusy }: { view: AppView; onSell: SellHandler; onUpdate: UpdateHandler; ordersBusy: boolean }) {
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState<ItemCategory | 'all'>('all')
-  const [sort, setSort] = useState<MasterySort>('arsenal-first')
-  const [page, setPage] = useState(1)
+  const [search, setSearch] = useRemembered('mastery.search', '', isString, 'session')
+  const [category, setCategory] = useRemembered<ItemCategory | 'all'>('mastery.category', 'all', oneOf(categories.map(entry => entry.value)))
+  const [sort, setSort] = useRemembered<MasterySort>('mastery.sort', 'arsenal-first', oneOf(masterySortOptions.map(option => option.value)))
+  const [page, setPage] = useRemembered('mastery.page', 1, isPageNumber, 'session')
   const { available, items, totals } = view.mastery
   const mastered = totals.reduce((sum, entry) => sum + entry.mastered, 0)
   const total = totals.reduce((sum, entry) => sum + entry.total, 0)
@@ -831,8 +847,8 @@ function MasteryPage({ view, onSell, onUpdate, ordersBusy }: { view: AppView; on
   const visibleItems = pageItems(filtered, currentPage)
   const firstResult = filtered.length ? (currentPage - 1) * COLLECTION_PAGE_SIZE + 1 : 0
   const lastResult = Math.min(currentPage * COLLECTION_PAGE_SIZE, filtered.length)
-  useEffect(() => setPage(1), [search, category, sort])
-  useEffect(() => setPage(value => clampPage(value, filtered.length)), [filtered.length])
+  useResetOnChange(() => setPage(1), [search, category, sort])
+  useEffect(() => setPage(value => clampPage(value, filtered.length)), [filtered.length, setPage])
 
   return <section className="page" aria-labelledby="mastery-title">
     <div className="mark-head">

@@ -84,6 +84,25 @@ describe('RelicPlanner', () => {
     expect(screen.getByRole('columnheader', { name: /Gain per 100 traces/ })).toHaveAttribute('aria-sort', 'ascending')
   })
 
+  it('keeps its choices when the tab is left and opened again', async () => {
+    backend.getRelicPlan.mockResolvedValue(ready)
+    const { unmount } = render(<RelicPlanner effectiveMode="full"/>)
+    await screen.findByRole('table', { name: 'Relics' })
+    fireEvent.click(screen.getByRole('button', { name: /Gain per 100 traces/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lith' }))
+    fireEvent.click(screen.getByRole('button', { name: '3' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Only owned' }))
+    unmount()
+
+    render(<RelicPlanner effectiveMode="full"/>)
+    await screen.findByRole('table', { name: 'Relics' })
+    expect(screen.getByRole('columnheader', { name: /Gain per 100 traces/ })).toHaveAttribute('aria-sort', 'ascending')
+    expect(screen.getByRole('button', { name: 'Lith' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '3' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('checkbox', { name: 'Only owned' })).not.toBeChecked()
+    expect(backend.getRelicPlan).toHaveBeenLastCalledWith({ currency: 'platinum', squad: 3 })
+  })
+
   it('ranks by the value of opening each copy as it is', async () => {
     backend.getRelicPlan.mockResolvedValue(ready)
     render(<RelicPlanner effectiveMode="full"/>)

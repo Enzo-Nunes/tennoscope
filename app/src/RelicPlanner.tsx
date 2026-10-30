@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { MetalMark } from './MetalMark'
+import { isBoolean, isString, oneOf, useRemembered } from './remembered'
 import { getRelicPlan, type AccessMode, type PlanCurrency, type Refinement, type RelicPlanEntry, type RelicPlanRow, type RelicPlanView } from './backend'
 
 const REFINEMENTS: Refinement[] = ['intact', 'exceptional', 'flawless', 'radiant']
@@ -14,6 +15,10 @@ const eraOf = (relic: string) => relic.slice(0, relic.indexOf(' '))
 
 type SortKey = 'gain' | 'value' | 'radiant' | 'refinement'
 interface Sort { key: SortKey; descending: boolean }
+
+const SORT_KEYS: SortKey[] = ['gain', 'value', 'radiant', 'refinement']
+const isSort = (value: unknown) => typeof value === 'object' && value !== null
+  && SORT_KEYS.includes((value as Sort).key) && typeof (value as Sort).descending === 'boolean'
 
 function figure(value: number): string {
   return value.toFixed(1)
@@ -47,12 +52,12 @@ function compare(left: RelicPlanEntry, right: RelicPlanEntry, sort: Sort): numbe
 }
 
 export function RelicPlanner({ effectiveMode }: { effectiveMode: AccessMode }) {
-  const [currency, setCurrency] = useState<PlanCurrency>('platinum')
-  const [squad, setSquad] = useState(1)
-  const [search, setSearch] = useState('')
-  const [onlyOwned, setOnlyOwned] = useState(true)
-  const [era, setEra] = useState<Era | null>(null)
-  const [sort, setSort] = useState<Sort>({ key: 'gain', descending: true })
+  const [currency, setCurrency] = useRemembered<PlanCurrency>('relics.currency', 'platinum', oneOf(['platinum', 'ducats']))
+  const [squad, setSquad] = useRemembered('relics.squad', 1, oneOf([1, 2, 3, 4]))
+  const [search, setSearch] = useRemembered('relics.search', '', isString, 'session')
+  const [onlyOwned, setOnlyOwned] = useRemembered('relics.only-owned', true, isBoolean)
+  const [era, setEra] = useRemembered<Era | null>('relics.era', null, oneOf([null, ...ERAS]))
+  const [sort, setSort] = useRemembered<Sort>('relics.sort', { key: 'gain', descending: true }, isSort)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [view, setView] = useState<RelicPlanView | null>(null)
   const [error, setError] = useState<string | null>(null)
