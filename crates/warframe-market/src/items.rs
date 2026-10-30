@@ -176,6 +176,22 @@ impl MarketItems {
             .is_some_and(|entry| entry.comparable)
     }
 
+    /// Whether this item is a set: one listing standing for every part of a build.
+    pub fn is_set(&self, item_id: &str) -> bool {
+        self.entries
+            .get(item_id)
+            .is_some_and(|entry| names_set(entry.name.as_deref()))
+    }
+
+    /// Whether the market publishes an item at exactly this path. A set's contents are read from
+    /// the build's recipe, and a component the market does not sell (Shedu's blueprint, a gem
+    /// the recipe also takes) is no part of what a set listing hands over.
+    ///
+    /// ponytail: same linear scan profile as `listing_for`, run once per set slot.
+    pub fn publishes(&self, path: &str) -> bool {
+        self.entry_for_path(path).is_some()
+    }
+
     /// The listing a collection row would publish, or `None` when there is none this application
     /// can name honestly.
     ///
@@ -262,11 +278,7 @@ impl MarketItems {
         // A set's path names the built item; the rows a seller holds are its parts. Same refusal
         // `path_is_comparable` makes, read from the entry's own name, so a set order is never
         // attributed to a row the collection cannot carry.
-        if entry
-            .name
-            .as_deref()
-            .is_some_and(|name| name.trim().ends_with(" Set"))
-        {
+        if names_set(entry.name.as_deref()) {
             return None;
         }
         if !entry.subtypes.is_empty() {
@@ -425,5 +437,12 @@ fn path_is_comparable(path: Option<&str>, name: Option<&str>, subtypes: Option<&
     if path.contains("/Projections/") {
         return false;
     }
-    !name.is_some_and(|name| name.trim().ends_with(" Set"))
+    !names_set(name)
+}
+
+/// A set is told by its name, the test reconciliation has always made. The table also tags sets,
+/// but tags are not parsed; on 2026-10-30 the name caught all 234 tagged sets plus 8 syndicate
+/// armor bundles, which no recipe describes and which stay unjudged either way.
+fn names_set(name: Option<&str>) -> bool {
+    name.is_some_and(|name| name.trim().ends_with(" Set"))
 }

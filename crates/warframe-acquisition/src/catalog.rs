@@ -86,7 +86,8 @@ impl DucatTable {
     }
 }
 
-/// What a Prime item is built from, so mastery marks know which parts a reward belongs to.
+/// What a masterable item is built from, so mastery marks know which parts a reward belongs to
+/// and a set listing knows which parts it stands for.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Recipe {
     /// The parent item's uniqueName.
@@ -97,8 +98,7 @@ pub struct Recipe {
     pub components: Vec<RecipeComponent>,
 }
 
-/// One slot of a Prime recipe: a blueprint, a tradable part, or a whole item another Prime
-/// consumes.
+/// One slot of a recipe: a blueprint, a tradable part, or a whole item the build consumes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RecipeComponent {
     /// The component's uniqueName.
@@ -224,8 +224,20 @@ impl CatalogIndex {
             )?;
         }
 
+        let mut contested = BTreeSet::new();
         for parent in &raw {
-            if !is_prime_parent(&parent.name) {
+            let prime = is_prime_parent(&parent.name);
+            if !prime {
+                // A non-Prime item's recipe is indexed for the item mastery counts: a Wraith,
+                // Vandal or syndicate weapon is mastered like a Prime and its parts trade like a
+                // Prime's. Anything else with components is a cosmetic, a gem or a resource.
+                if index
+                    .items
+                    .get(&parent.unique_name)
+                    .is_some_and(CatalogMetadata::masterable)
+                {
+                    index.index_recipe(parent, false, &mut contested)?;
+                }
                 continue;
             }
             // A prime Frame's tradable parts are their blueprints: the game's reward screen labels one
@@ -285,14 +297,32 @@ impl CatalogIndex {
                     }
                 }
             }
-            index.index_recipe(parent)?;
+            index.index_recipe(parent, true, &mut contested)?;
+        }
+        // A part two recipes both take names neither: Volt and Chroma share a Neuroptics path,
+        // Wrath and Pride their blades. Which item it builds is the player's choice, so no one
+        // parent's mastery speaks for it.
+        for part in &contested {
+            index.part_parents.remove(part);
         }
         Ok(index)
     }
 
-    /// The recipe behind one Prime parent: its blueprint, tradable parts and consumed whole
-    /// items. Resources such as Orokin Cells are skipped, since no mastery mark needs them.
-    fn index_recipe(&mut self, parent: &WfcdItem) -> Result<(), CatalogError> {
+    /// The recipe behind one parent: its blueprint, tradable parts and consumed whole items.
+    /// Resources such as Orokin Cells are skipped, since no mastery mark needs them.
+    ///
+    /// A Prime part is told from a resource by its ducats. A non-Prime part has none, and WFCD's
+    /// `tradable` is no help there either: it reads false on Shedu's parts, which trade, and true
+    /// on the Deimos gems Arum Spinosa takes, which are resources. What does tell them apart is
+    /// that every resource and gem is a catalogue item in its own right and no non-Prime part is,
+    /// measured against the 2026-10-30 catalogue. Prime parts cannot use that rule: the loop above
+    /// has already inserted them as items.
+    fn index_recipe(
+        &mut self,
+        parent: &WfcdItem,
+        prime: bool,
+        contested: &mut BTreeSet<String>,
+    ) -> Result<(), CatalogError> {
         let mut grouped: BTreeMap<&str, (u32, &WfcdComponent)> = BTreeMap::new();
         for component in &parent.components {
             grouped
@@ -311,9 +341,11 @@ impl CatalogIndex {
                 .is_some_and(CatalogMetadata::masterable)
             {
                 ComponentKind::Ingredient
-            } else if first.tradable
-                && (first.ducats.is_some() || first.prime_selling_price.is_some())
-            {
+            } else if if prime {
+                first.tradable && (first.ducats.is_some() || first.prime_selling_price.is_some())
+            } else {
+                !self.items.contains_key(*path)
+            } {
                 ComponentKind::Part
             } else {
                 continue;
@@ -348,15 +380,19 @@ impl CatalogIndex {
         for (slot_index, slot) in slots.iter().enumerate() {
             match slot.kind {
                 ComponentKind::Blueprint | ComponentKind::Part => {
-                    self.part_parents
-                        .insert(slot.path.clone(), (parent_path.clone(), slot_index));
                     // Relics drop the blueprint, and the player may hold either spelling. Key
                     // both at the same slot.
-                    if let Some(stem) = slot.path.strip_suffix("Component") {
-                        self.part_parents.insert(
-                            format!("{stem}Blueprint"),
-                            (parent_path.clone(), slot_index),
-                        );
+                    let sibling = slot
+                        .path
+                        .strip_suffix("Component")
+                        .map(|stem| format!("{stem}Blueprint"));
+                    for path in std::iter::once(slot.path.clone()).chain(sibling) {
+                        let previous = self
+                            .part_parents
+                            .insert(path.clone(), (parent_path.clone(), slot_index));
+                        if previous.is_some_and(|(other, _)| other != parent_path) {
+                            contested.insert(path);
+                        }
                     }
                 }
                 ComponentKind::Ingredient => {
@@ -401,7 +437,8 @@ impl CatalogIndex {
             .collect()
     }
 
-    /// The Prime recipe for a parent item's path, if the catalogue knows one.
+    /// The recipe for a parent item's path, if the catalogue knows one: every Prime, and every
+    /// other masterable item built from parts.
     pub fn recipe(&self, parent: &str) -> Option<&Recipe> {
         self.recipes.get(parent)
     }

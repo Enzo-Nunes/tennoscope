@@ -58,6 +58,14 @@ describe('order flags', () => {
     expect(statusLabel(entry('d', { state: 'unverifiable' }))).toBe('Unverifiable')
   })
 
+  it('counts a set listing’s shortfall in sets', () => {
+    const set = (status: ReconciledOrder['status'], quantity: number) =>
+      ({ ...entry('s', status, { quantity }), name: 'Braton Prime Set', is_set: true })
+    expect(statusLabel(set({ state: 'missing' }, 1))).toBe('You no longer hold every part')
+    expect(statusLabel(set({ state: 'overshoot', owned: 1 }, 3))).toBe('Your parts complete 1 of 3 sets')
+    expect(fixLabel({ state: 'overshoot', owned: 1 })).toBe('Lower to 1')
+  })
+
   it('names the fix as the action it performs, and leaves removal to every row', () => {
     expect(fixLabel({ state: 'overshoot', owned: 1 })).toBe('Lower to 1')
     expect(fixLabel({ state: 'missing' })).toBeNull()

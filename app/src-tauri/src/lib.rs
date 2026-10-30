@@ -1192,6 +1192,7 @@ fn publish_account(shared: &SharedRuntime) -> Result<AppView, String> {
         cached_items,
         collection,
         snapshot,
+        recipes,
         inventory_evidence_available,
         generation,
     ) = {
@@ -1225,6 +1226,7 @@ fn publish_account(shared: &SharedRuntime) -> Result<AppView, String> {
             runtime.market.cached_items(),
             collection,
             snapshot,
+            runtime.core.mastery_catalog(),
             inventory_evidence_available,
             runtime.market.generation(),
         )
@@ -1263,6 +1265,7 @@ fn publish_account(shared: &SharedRuntime) -> Result<AppView, String> {
     let evidence = inventory_evidence_available.then_some(InventoryEvidence {
         collection: &collection,
         snapshot: snapshot.as_ref(),
+        recipes: recipes.as_deref(),
     });
     let outcome = fetch_account(&transport, &token, backing, cached_items, evidence, &now);
 
@@ -1316,6 +1319,8 @@ struct FetchedAccount {
 struct InventoryEvidence<'a> {
     collection: &'a warframe_domain::Collection,
     snapshot: Option<&'a SnapshotMeta>,
+    /// The recipe index a set listing is judged through, once the catalogue has loaded.
+    recipes: Option<&'a warframe_acquisition::CatalogIndex>,
 }
 
 /// The network part of `publish_account`, done with no runtime lock held.
@@ -1337,12 +1342,17 @@ fn fetch_account(
     match warframe_market::list_mine(transport, token) {
         Ok((orders, renewed)) => {
             let empty_collection = warframe_domain::Collection::default();
-            let (evidence_collection, evidence_snapshot) = evidence
-                .map_or((&empty_collection, None), |evidence| {
-                    (evidence.collection, evidence.snapshot)
+            let (evidence_collection, evidence_snapshot, recipes) = evidence
+                .map_or((&empty_collection, None, None), |evidence| {
+                    (evidence.collection, evidence.snapshot, evidence.recipes)
                 });
-            let reconciled =
-                app_core::reconcile_orders(&orders, &items, evidence_collection, evidence_snapshot);
+            let reconciled = app_core::reconcile_orders(
+                &orders,
+                &items,
+                evidence_collection,
+                evidence_snapshot,
+                recipes,
+            );
             let mut view = app_core::MarketAccountView::linked(backing, reconciled, now.to_owned());
             if let Some(evidence) = evidence.as_ref() {
                 view = view.with_listable(&items, evidence.collection);
@@ -2898,6 +2908,7 @@ mod tests {
             let evidence = inventory_evidence_available.then_some(InventoryEvidence {
                 collection: &collection,
                 snapshot: Some(&snapshot),
+                recipes: None,
             });
             fetch_account(
                 &transport,

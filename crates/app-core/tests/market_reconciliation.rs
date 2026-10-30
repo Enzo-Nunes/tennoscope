@@ -1,5 +1,6 @@
 use app_core::{OrderStatus, reconcile_orders};
 use local_store::{SnapshotInstant, SnapshotMeta};
+use warframe_acquisition::CatalogIndex;
 use warframe_domain::{
     CatalogItem, Category, Collection, InventoryEntry, InventorySnapshot, ItemId,
 };
@@ -94,6 +95,7 @@ fn an_order_backed_by_the_collection_is_ok() {
         &items(),
         &collection_holding(vec![(BRATON_PATH, 3, None)]),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(reconciled[0].status, OrderStatus::Ok);
@@ -109,6 +111,7 @@ fn an_order_for_something_unowned_is_missing() {
         &items(),
         &collection_holding(vec![(MOD_PATH, 4, None)]),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(reconciled[0].status, OrderStatus::Missing);
@@ -125,6 +128,7 @@ fn an_order_against_a_zero_quantity_row_is_missing() {
         &items(),
         &collection_holding(vec![(BRATON_PATH, 0, None)]),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(reconciled[0].status, OrderStatus::Missing);
@@ -139,6 +143,7 @@ fn an_order_listing_more_than_is_owned_overshoots() {
         &items(),
         &collection_holding(vec![(BRATON_PATH, 1, None)]),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(reconciled[0].status, OrderStatus::Overshoot { owned: 1 });
@@ -150,7 +155,7 @@ fn an_order_listing_more_than_is_owned_overshoots() {
 fn without_a_snapshot_nothing_is_claimed() {
     let orders = vec![sell_order(BRATON_ID, 1, 1_785_405_600)];
 
-    let reconciled = reconcile_orders(&orders, &items(), &Collection::default(), None);
+    let reconciled = reconcile_orders(&orders, &items(), &Collection::default(), None, None);
 
     assert_eq!(reconciled[0].status, OrderStatus::Unverifiable);
 }
@@ -164,6 +169,7 @@ fn an_order_newer_than_the_snapshot_is_unverifiable_without_downstream_parsing()
         &items(),
         &collection_holding(vec![(MOD_PATH, 4, None)]),
         Some(&snapshot_at(1_785_405_600)),
+        None,
     );
 
     assert_eq!(reconciled[0].status, OrderStatus::Unverifiable);
@@ -180,6 +186,7 @@ fn an_order_with_no_resolvable_item_is_unverifiable() {
         &items(),
         &collection_holding(vec![(BRATON_PATH, 1, None)]),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(reconciled[0].status, OrderStatus::Unverifiable);
@@ -199,6 +206,7 @@ fn a_ranked_order_is_unverifiable() {
         &items(),
         &collection_holding(vec![(MOD_PATH, 2, Some(5))]),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(reconciled[0].status, OrderStatus::Unverifiable);
@@ -215,6 +223,7 @@ fn a_buy_order_is_never_reconciled() {
         &items(),
         &Collection::default(),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(reconciled[0].status, OrderStatus::Unverifiable);
@@ -231,6 +240,7 @@ fn an_order_with_no_update_time_is_unverifiable() {
         &items(),
         &collection_holding(vec![(MOD_PATH, 1, None)]),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(reconciled[0].status, OrderStatus::Unverifiable);
@@ -247,6 +257,7 @@ fn owned_quantity_sums_every_rank_of_one_card() {
         &items(),
         &collection_holding(vec![(MOD_PATH, 2, None), (MOD_PATH, 1, Some(5))]),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(reconciled[0].status, OrderStatus::Ok);
@@ -265,6 +276,7 @@ fn an_epoch_seconds_snapshot_is_compared_against_an_rfc_3339_order() {
         &items(),
         &collection_holding(vec![(MOD_PATH, 4, None)]),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(reconciled[0].status, OrderStatus::Missing);
@@ -288,6 +300,7 @@ fn a_relic_order_is_unverifiable_rather_than_missing() {
             None,
         )]),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(
@@ -299,7 +312,8 @@ fn a_relic_order_is_unverifiable_rather_than_missing() {
 }
 
 /// A set listing names the built item; what the seller holds is the parts. Left uncaught, every
-/// set on the account, the most common thing there is to sell, reads as missing.
+/// set on the account, the most common thing there is to sell, reads as missing. Before the
+/// recipe index has loaded there is nothing to read the parts from, so nothing is claimed.
 #[test]
 fn a_set_order_is_unverifiable_rather_than_missing() {
     let orders = vec![sell_order(SET_ID, 1, 1_785_405_600)];
@@ -309,6 +323,7 @@ fn a_set_order_is_unverifiable_rather_than_missing() {
         &items(),
         &collection_holding(vec![(BRATON_PATH, 1, None)]),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(reconciled[0].status, OrderStatus::Unverifiable);
@@ -332,6 +347,7 @@ fn a_reconciled_order_names_the_collection_row_it_belongs_to() {
         &items(),
         &Collection::default(),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(reconciled[0].row_id.as_deref(), Some(BRATON_PATH));
@@ -360,8 +376,173 @@ fn an_order_that_names_no_row_says_so() {
         &items(),
         &Collection::default(),
         Some(&snapshot_at(1_785_492_000)),
+        None,
     );
 
     assert_eq!(reconciled[0].row_id, None);
     assert_eq!(reconciled[1].row_id, None);
+}
+
+const SET_PARTS_ITEMS: &str = r#"{"apiVersion":"0.25.0","data":[
+    {"id":"set-braton","gameRef":"/Lotus/Weapons/Tenno/Rifle/BratonPrime",
+     "i18n":{"en":{"name":"Braton Prime Set"}}},
+    {"id":"part-braton-bp","gameRef":"/Lotus/Types/Recipes/Weapons/BratonPrimeBlueprint",
+     "i18n":{"en":{"name":"Braton Prime Blueprint"}}},
+    {"id":"part-braton-barrel","gameRef":"/Lotus/Types/Recipes/Weapons/WeaponParts/BratonPrimeBarrel",
+     "i18n":{"en":{"name":"Braton Prime Barrel"}}},
+    {"id":"part-braton-stock","gameRef":"/Lotus/Types/Recipes/Weapons/WeaponParts/BratonPrimeStock",
+     "i18n":{"en":{"name":"Braton Prime Stock"}}},
+    {"id":"set-shedu","gameRef":"/Lotus/Weapons/Sentients/Shedu/SheduHeavyWeapon",
+     "i18n":{"en":{"name":"Shedu Set"}}},
+    {"id":"part-shedu-barrel","gameRef":"/Lotus/Types/Recipes/Weapons/WeaponParts/SheduHeavyWeaponBarrel",
+     "i18n":{"en":{"name":"Shedu Barrel"}}},
+    {"id":"part-shedu-handle","gameRef":"/Lotus/Types/Recipes/Weapons/WeaponParts/SheduHeavyWeaponHandle",
+     "i18n":{"en":{"name":"Shedu Handle"}}},
+    {"id":"gem","gameRef":"/Lotus/Types/Items/Gems/Deimos/DeimosEidolonGemBCutItem",
+     "i18n":{"en":{"name":"Cabochon Embolos"}}}
+],"error":null}"#;
+
+/// Braton Prime with its stock taken twice, so a set's count is not read as one of each; and
+/// Shedu, whose blueprint the market does not sell and whose build also takes a gem the market
+/// does sell, neither of which a Shedu set hands over.
+const SET_PARTS_WFCD: &[u8] = br#"[
+  {"uniqueName":"/Lotus/Weapons/Tenno/Rifle/BratonPrime","name":"Braton Prime","type":"Rifle","category":"Primary","masterable":true,
+   "components":[
+     {"uniqueName":"/Lotus/Types/Recipes/Weapons/BratonPrimeBlueprint","name":"Blueprint","tradable":true,"ducats":25},
+     {"uniqueName":"/Lotus/Types/Recipes/Weapons/WeaponParts/BratonPrimeBarrel","name":"Barrel","tradable":true,"ducats":15},
+     {"uniqueName":"/Lotus/Types/Recipes/Weapons/WeaponParts/BratonPrimeStock","name":"Stock","tradable":true,"ducats":25,"itemCount":2},
+     {"uniqueName":"/Lotus/Types/Items/MiscItems/OrokinCell","name":"Orokin Cell","tradable":false}
+   ]},
+  {"uniqueName":"/Lotus/Weapons/Sentients/Shedu/SheduHeavyWeapon","name":"Shedu","type":"Rifle","category":"Primary","masterable":true,
+   "components":[
+     {"uniqueName":"/Lotus/Types/Recipes/Weapons/SheduHeavyWeaponBlueprint","name":"Blueprint","tradable":false},
+     {"uniqueName":"/Lotus/Types/Recipes/Weapons/WeaponParts/SheduHeavyWeaponBarrel","name":"Barrel","tradable":false},
+     {"uniqueName":"/Lotus/Types/Recipes/Weapons/WeaponParts/SheduHeavyWeaponHandle","name":"Handle","tradable":false},
+     {"uniqueName":"/Lotus/Types/Items/Gems/Deimos/DeimosEidolonGemBCutItem","name":"Cabochon Embolos","tradable":true}
+   ]},
+  {"uniqueName":"/Lotus/Types/Items/Gems/Deimos/DeimosEidolonGemBCutItem","name":"Cabochon Embolos","type":"Misc","category":"Misc","masterable":false,"components":[]}
+]"#;
+
+const BRATON_BP: &str = "/Lotus/Types/Recipes/Weapons/BratonPrimeBlueprint";
+const BRATON_BARREL: &str = "/Lotus/Types/Recipes/Weapons/WeaponParts/BratonPrimeBarrel";
+const BRATON_STOCK: &str = "/Lotus/Types/Recipes/Weapons/WeaponParts/BratonPrimeStock";
+
+fn judge_sets(orders: &[MarketOrder], held: Vec<(&str, u32, Option<u32>)>) -> Vec<OrderStatus> {
+    let items = MarketItems::from_response(SET_PARTS_ITEMS.as_bytes()).expect("items parse");
+    let recipes = CatalogIndex::from_wfcd_json(SET_PARTS_WFCD).expect("catalog parses");
+    reconcile_orders(
+        orders,
+        &items,
+        &collection_holding(held),
+        Some(&snapshot_at(1_785_492_000)),
+        Some(&recipes),
+    )
+    .into_iter()
+    .map(|entry| entry.status)
+    .collect()
+}
+
+/// With the recipe loaded, a set is judged by how many whole builds its parts complete, each part
+/// counted at the copies one build takes.
+#[test]
+fn a_set_order_is_judged_by_the_sets_its_parts_complete() {
+    let full = vec![
+        (BRATON_BP, 2, None),
+        (BRATON_BARREL, 2, None),
+        (BRATON_STOCK, 4, None),
+    ];
+    assert_eq!(
+        judge_sets(&[sell_order("set-braton", 2, 1_785_405_600)], full),
+        vec![OrderStatus::Ok]
+    );
+
+    // Two of each part is two blueprints and barrels but one build's worth of stocks.
+    let short = vec![
+        (BRATON_BP, 2, None),
+        (BRATON_BARREL, 2, None),
+        (BRATON_STOCK, 2, None),
+    ];
+    assert_eq!(
+        judge_sets(&[sell_order("set-braton", 2, 1_785_405_600)], short),
+        vec![OrderStatus::Overshoot { owned: 1 }]
+    );
+
+    let none = vec![(BRATON_BP, 1, None), (BRATON_STOCK, 2, None)];
+    assert_eq!(
+        judge_sets(&[sell_order("set-braton", 1, 1_785_405_600)], none),
+        vec![OrderStatus::Missing]
+    );
+}
+
+/// A part listed on its own takes its copies first, and the set is measured against what is left,
+/// so a barrel listed beside a set the same barrel completes is not counted twice.
+#[test]
+fn part_listings_spend_their_parts_before_a_set_does() {
+    let one_build = vec![
+        (BRATON_BP, 1, None),
+        (BRATON_BARREL, 1, None),
+        (BRATON_STOCK, 2, None),
+    ];
+    let orders = [
+        sell_order("set-braton", 1, 1_785_405_600),
+        sell_order("part-braton-barrel", 1, 1_785_405_600),
+    ];
+
+    assert_eq!(
+        judge_sets(&orders, one_build),
+        vec![OrderStatus::Missing, OrderStatus::Ok]
+    );
+}
+
+/// Two listings of one set share one pool of parts: the second is measured against what the first
+/// leaves, whatever order they arrive in.
+#[test]
+fn a_second_listing_of_a_set_gets_what_the_first_leaves() {
+    let one_build = vec![
+        (BRATON_BP, 1, None),
+        (BRATON_BARREL, 1, None),
+        (BRATON_STOCK, 2, None),
+    ];
+    let orders = [
+        sell_order("set-braton", 1, 1_785_405_600),
+        sell_order("set-braton", 1, 1_785_405_600),
+    ];
+
+    assert_eq!(
+        judge_sets(&orders, one_build),
+        vec![OrderStatus::Ok, OrderStatus::Missing]
+    );
+}
+
+/// A set hands over only what the market sells as its parts: not Shedu's blueprint, which does not
+/// trade, and not the gem the build also takes, which trades on its own.
+#[test]
+fn a_set_needs_only_the_components_the_market_sells_as_parts() {
+    let parts = vec![
+        (
+            "/Lotus/Types/Recipes/Weapons/WeaponParts/SheduHeavyWeaponBarrel",
+            1,
+            None,
+        ),
+        (
+            "/Lotus/Types/Recipes/Weapons/WeaponParts/SheduHeavyWeaponHandle",
+            1,
+            None,
+        ),
+    ];
+
+    assert_eq!(
+        judge_sets(&[sell_order("set-shedu", 1, 1_785_405_600)], parts),
+        vec![OrderStatus::Ok]
+    );
+}
+
+/// The snapshot rule holds for sets as for anything: a listing placed after the inventory was
+/// read may be backed by parts picked up since.
+#[test]
+fn a_set_order_newer_than_the_snapshot_is_unverifiable() {
+    assert_eq!(
+        judge_sets(&[sell_order("set-braton", 1, 1_785_500_000)], Vec::new()),
+        vec![OrderStatus::Unverifiable]
+    );
 }

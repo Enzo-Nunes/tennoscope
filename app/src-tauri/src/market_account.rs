@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use app_core::{MarketAccountView, OrderStatus, ReconciledOrder, reconcile_orders};
 use local_store::SnapshotMeta;
+use warframe_acquisition::CatalogIndex;
 use warframe_domain::Collection;
 use warframe_market::{
     CredentialBacking, CredentialStore, Listing, MarketError, MarketItems, MarketToken,
@@ -133,6 +134,7 @@ pub fn account_view(
     collection: &Collection,
     snapshot: Option<&SnapshotMeta>,
     now: &str,
+    recipes: Option<&CatalogIndex>,
 ) -> Result<MarketAccountView, MarketError> {
     let Some(token) = session.token()? else {
         return Ok(MarketAccountView::unlinked());
@@ -144,7 +146,7 @@ pub fn account_view(
             // Stored before the view is built, so a renewal survives even if something later in
             // this function fails.
             session.adopt(renewed)?;
-            let reconciled = reconcile_orders(&orders, &items, collection, snapshot);
+            let reconciled = reconcile_orders(&orders, &items, collection, snapshot, recipes);
             Ok(
                 MarketAccountView::linked(backing, reconciled, now.to_owned())
                     .with_listable(&items, collection),

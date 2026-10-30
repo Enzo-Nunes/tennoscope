@@ -95,6 +95,7 @@ fn an_unlinked_session_asks_for_nothing() {
         &Collection::default(),
         None,
         "2026-07-31T12:00:00Z",
+        None,
     )
     .expect("view builds");
 
@@ -157,6 +158,7 @@ fn a_linked_session_lists_and_reconciles() {
         &Collection::default(),
         None,
         "2026-07-31T12:00:00Z",
+        None,
     )
     .expect("view builds");
 
@@ -186,6 +188,7 @@ fn the_item_table_is_fetched_once() {
             &Collection::default(),
             None,
             "2026-07-31T12:00:00Z",
+            None,
         )
         .expect("view builds");
     }
@@ -214,6 +217,7 @@ fn a_refused_credential_becomes_a_relink() {
         &Collection::default(),
         None,
         "2026-07-31T12:00:00Z",
+        None,
     )
     .expect("view builds");
 
@@ -270,6 +274,7 @@ fn order(id: &str, status: OrderStatus) -> ReconciledOrder {
         },
         name: Some("Braton Prime Blueprint".to_owned()),
         row_id: Some("/Lotus/Types/Recipes/Weapons/BratonPrimeBlueprint".to_owned()),
+        is_set: false,
         status,
     }
 }

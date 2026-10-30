@@ -2,6 +2,7 @@
 
 mod fake_session;
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -10,8 +11,8 @@ use serde::Serialize;
 use thiserror::Error;
 use warframe_acquisition::{
     AcquisitionError, AcquisitionFailure, AcquisitionResult, AcquisitionStage, CatalogIndex,
-    CatalogLoadSource, DucatTable, Holdings, MarketPriceCache, MasteryEvidence, MasteryFacts,
-    MasteryLedger, PriceTable, StageState,
+    CatalogLoadSource, ComponentKind, DucatTable, Holdings, MarketPriceCache, MasteryEvidence,
+    MasteryFacts, MasteryLedger, PriceTable, StageState,
 };
 use warframe_domain::{
     CatalogItem, Category, Collection, DomainError, InventoryEntry, InventorySnapshot, MasteryMark,
@@ -139,10 +140,15 @@ impl AppCore {
         })
     }
 
-    /// The Prime recipe index, once the catalogue has loaded. Held like the price table:
+    /// The recipe index, once the catalogue has loaded. Held like the price table:
     /// mastery marks join rewards against it on every overlay publish.
     pub fn set_mastery_catalog(&mut self, catalog: Arc<CatalogIndex>) {
         self.mastery_catalog = Some(catalog);
+    }
+
+    /// The recipe index, for judging set listings by the parts they stand for.
+    pub fn mastery_catalog(&self) -> Option<Arc<CatalogIndex>> {
+        self.mastery_catalog.clone()
     }
 
     /// This run's inventory facts: affinity per item and pending foundry builds. A
@@ -1384,6 +1390,9 @@ pub struct ReconciledOrder {
     /// the order's `item_id` and the row's key are namespaces that share nothing, and only the
     /// item table joins them.
     pub row_id: Option<String>,
+    /// Whether the order lists whole sets, so an overshoot's count is of sets the parts complete
+    /// rather than of copies held.
+    pub is_set: bool,
     pub status: OrderStatus,
 }
 
@@ -1396,53 +1405,184 @@ pub struct ReconciledOrder {
 /// keep the last coherent inventory when the reader breaks, so a snapshot can be stale or absent
 /// while looking exactly like a current one from here. Judging against one produces confident
 /// accusations about orders that were never wrong: each with a delete button beside it.
+///
+/// A set is judged through its build's recipe, when `recipes` has loaded and knows one. Parts
+/// are spent on part listings first and sets are measured against what is left: a part listed on
+/// its own is the narrower promise, and a holding that covers it and a set besides is the case
+/// the collection can confirm, not the one it has to choose between.
 pub fn reconcile_orders(
     orders: &[MarketOrder],
     items: &MarketItems,
     collection: &Collection,
     snapshot: Option<&SnapshotMeta>,
+    recipes: Option<&CatalogIndex>,
 ) -> Vec<ReconciledOrder> {
     // Quantity per card, summed across ranks. A card at two ranks is two entries in the
     // collection and one listing on the market, so comparing against either entry alone would
     // call a legitimate order an overshoot.
-    let mut owned: std::collections::HashMap<&str, u32> = std::collections::HashMap::new();
+    let mut owned: HashMap<&str, u32> = HashMap::new();
     for entry in collection.entries() {
         *owned.entry(entry.item.id.catalog_path()).or_default() += entry.quantity;
     }
 
+    let mut statuses = orders
+        .iter()
+        .map(|order| status_for(order, items, &owned, snapshot))
+        .collect::<Vec<_>>();
+
+    // What part listings leave over for sets. Every unranked sell order on a comparable item
+    // claims its share, judged or not: an order newer than the snapshot still promises the copies.
+    let mut left: HashMap<String, u32> = owned
+        .iter()
+        .map(|(path, quantity)| ((*path).to_owned(), *quantity))
+        .collect();
+    for order in orders {
+        if order.kind != OrderKind::Sell
+            || order.rank.is_some_and(|rank| rank > 0)
+            || !items.comparable(&order.item_id)
+        {
+            continue;
+        }
+        if let Some(held) = items
+            .catalog_path(&order.item_id)
+            .and_then(|path| left.get_mut(path))
+        {
+            *held = held.saturating_sub(order.quantity);
+        }
+    }
+    if let Some(recipes) = recipes {
+        for (order, status) in orders.iter().zip(statuses.iter_mut()) {
+            if order.kind != OrderKind::Sell || !items.is_set(&order.item_id) {
+                continue;
+            }
+            let Some(slots) = items
+                .catalog_path(&order.item_id)
+                .and_then(|path| set_slots(path, items, recipes))
+            else {
+                continue;
+            };
+            let complete = slots
+                .iter()
+                .map(|slot| slot.held(&left) / slot.per_set)
+                .min()
+                .unwrap_or(0);
+            // Spent whether or not this order is judged, so a second listing of the same set is
+            // measured against what the first one leaves.
+            let spent = complete.min(order.quantity);
+            for slot in &slots {
+                slot.spend(&mut left, spent.saturating_mul(slot.per_set));
+            }
+            if judgeable(order, snapshot) {
+                *status = match complete {
+                    0 => OrderStatus::Missing,
+                    complete if complete < order.quantity => {
+                        OrderStatus::Overshoot { owned: complete }
+                    }
+                    _ => OrderStatus::Ok,
+                };
+            }
+        }
+    }
+
     orders
         .iter()
-        .map(|order| ReconciledOrder {
+        .zip(statuses)
+        .map(|(order, status)| ReconciledOrder {
             order: order.clone(),
             name: items.name(&order.item_id).map(str::to_owned),
             row_id: items.row_of(&order.item_id, order.rank, order.subtype.as_deref()),
-            status: status_for(order, items, &owned, snapshot),
+            is_set: items.is_set(&order.item_id),
+            status,
         })
         .collect()
 }
 
-fn status_for(
-    order: &MarketOrder,
-    items: &MarketItems,
-    owned: &std::collections::HashMap<&str, u32>,
-    snapshot: Option<&SnapshotMeta>,
-) -> OrderStatus {
+/// One part a set hands over, with every path the collection may hold it under.
+struct SetSlot {
+    /// The part itself, then its `…Blueprint` spelling where it has one: a Frame's parts are held
+    /// as blueprints and recipes name the built component.
+    paths: Vec<String>,
+    per_set: u32,
+}
+
+impl SetSlot {
+    fn held(&self, left: &HashMap<String, u32>) -> u32 {
+        self.paths
+            .iter()
+            .map(|path| left.get(path).copied().unwrap_or(0))
+            .sum()
+    }
+
+    fn spend(&self, left: &mut HashMap<String, u32>, mut copies: u32) {
+        for path in &self.paths {
+            if let Some(held) = left.get_mut(path) {
+                let taken = copies.min(*held);
+                *held -= taken;
+                copies -= taken;
+            }
+        }
+    }
+}
+
+/// The parts a set listing stands for, or `None` when the recipe cannot say.
+///
+/// The recipe's blueprint and parts, kept only where warframe.market sells that component: a
+/// whole weapon a build consumes (Akbronco's two Broncos) is not in the market's set, and neither
+/// is Shedu's untradable blueprint. Fewer than two slots left is a recipe that does not describe
+/// the set the market sells (the Duviri weapons, whose parts the market lists under paths the
+/// catalogue does not use), and a set judged on the blueprint alone would be called complete by
+/// a holding that is not.
+fn set_slots(path: &str, items: &MarketItems, recipes: &CatalogIndex) -> Option<Vec<SetSlot>> {
+    let slots = recipes
+        .recipe(path)?
+        .components
+        .iter()
+        .filter(|slot| slot.kind != ComponentKind::Ingredient)
+        .filter_map(|slot| {
+            let mut paths = vec![slot.path.clone()];
+            if let Some(stem) = slot.path.strip_suffix("Component") {
+                paths.push(format!("{stem}Blueprint"));
+            }
+            paths
+                .iter()
+                .any(|path| items.publishes(path))
+                .then_some(SetSlot {
+                    paths,
+                    per_set: slot.per_build.max(1),
+                })
+        })
+        .collect::<Vec<_>>();
+    (slots.len() >= 2).then_some(slots)
+}
+
+/// Whether the snapshot may speak about this order at all: a sell order for an unranked copy,
+/// placed before the inventory it is measured against was read.
+fn judgeable(order: &MarketOrder, snapshot: Option<&SnapshotMeta>) -> bool {
     // Owning none of something is the ordinary state for something you are trying to buy.
     if order.kind != OrderKind::Sell {
-        return OrderStatus::Unverifiable;
+        return false;
     }
     // A rank names a particular copy, and the collection stores each rank separately. Which copies
     // the order means is not answerable from the order, so a maxed arcane listed at rank 5 is not
     // evidence about the unranked stack of the same card.
     if order.rank.is_some_and(|rank| rank > 0) {
-        return OrderStatus::Unverifiable;
+        return false;
     }
     let (Some(snapshot), Some(updated_at)) = (snapshot, order.updated_at) else {
-        return OrderStatus::Unverifiable;
+        return false;
     };
     // Both ingest adapters expose one ordered instant. Keeping format knowledge at those seams
     // makes this reconciliation module deeper and preserves locality for the money-adjacent rule.
-    if snapshot.observed_at() <= updated_at {
+    snapshot.observed_at() > updated_at
+}
+
+fn status_for(
+    order: &MarketOrder,
+    items: &MarketItems,
+    owned: &HashMap<&str, u32>,
+    snapshot: Option<&SnapshotMeta>,
+) -> OrderStatus {
+    if !judgeable(order, snapshot) {
         return OrderStatus::Unverifiable;
     }
     let Some(path) = items.catalog_path(&order.item_id) else {
@@ -1452,7 +1592,7 @@ fn status_for(
     // four refinements the collection stores separately, and a set's path names the built item
     // rather than the parts a seller actually holds. Asking whether either is owned always answers
     // no, so an unguarded comparison would flag most of a real account's listings as missing and
-    // offer to delete them.
+    // offer to delete them. A set is judged separately, through its recipe.
     if !items.comparable(&order.item_id) {
         return OrderStatus::Unverifiable;
     }

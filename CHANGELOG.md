@@ -16,6 +16,14 @@ see the difference.
 
 ### Added
 
+- **The Orders tab checks set listings against the parts you hold.** A set row now says
+  "Your parts complete 1 of 3 sets" with a Lower to 1 fix, or "You no longer hold every part",
+  instead of always reading Unverifiable. Parts you list on their own count first, so a part
+  listed beside a set it completes is not counted twice. Covers Prime sets and most non-Prime
+  ones (Wraith, Vandal, Sentient and similar); sets the catalogue cannot describe stay
+  Unverifiable.
+- **Non-Prime parts get the "Item mastered" tag.** A Wraith, Vandal or syndicate part, or a
+  non-Prime blueprint, is tagged once the item it builds is mastered, as Prime parts already were.
 - **The Relics tab search also finds relics by what they drop.** Typing an item name, such as
   "citrine", shows every relic with a matching reward, here every Citrine Prime part. Relic
   names still match as before.

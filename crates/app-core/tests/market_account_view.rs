@@ -64,6 +64,7 @@ fn reconciled(order: MarketOrder, status: OrderStatus) -> ReconciledOrder {
         order,
         name: Some("Braton Prime Blueprint".to_owned()),
         row_id: Some("/Lotus/Types/Recipes/Weapons/BratonPrimeBlueprint".to_owned()),
+        is_set: false,
         status,
     }
 }
