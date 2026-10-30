@@ -1,11 +1,14 @@
 use super::{
-    AccessPolicy, SharedRuntime, apply_outcome, overlay_window, refresh_blocking, reward_capture,
+    AccessPolicy, SharedRuntime, apply_outcome, overlay_window, refresh_blocking,
     reward_log::{RewardLogEvent, RewardLogMachine},
     reward_observer::{RewardObservation, RewardObserverState},
     reward_ocr::{self, ScreenRewardSource},
     reward_recognition::{RecognitionTiming, RecognizedRewards, RewardRecognition},
     reward_source::LiveMemoryRewardState,
 };
+// Only the Linux portal teardown names it now that the kiosk's capture source is gone.
+#[cfg(target_os = "linux")]
+use super::reward_capture;
 use app_core::InventoryRefreshOutcome;
 use std::{
     collections::{BTreeMap, BTreeSet},
