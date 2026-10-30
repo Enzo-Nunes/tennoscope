@@ -27,7 +27,8 @@ export type SellHandler = (collectionId: string, platinum: number, quantity: num
 export type UpdateHandler = (orderId: string, platinum: number, quantity: number) => Promise<void>
 
 export function SellForm({ item, listing, busy, onSell, onUpdate, onDone }: {
-  item: CollectionItem
+  /** A collection row, or for a set's edit the set itself, held at the sets its parts complete. */
+  item: Pick<CollectionItem, 'id' | 'name' | 'quantity' | 'platinum'>
   listing?: MarketOrder
   busy: boolean
   onSell: SellHandler

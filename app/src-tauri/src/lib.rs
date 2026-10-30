@@ -1811,10 +1811,19 @@ fn apply_outcome(
     if !inventory_refresh_authorized(&runtime.setup, &runtime.transition) {
         return Err("inventory refresh requires Full access mode".to_owned());
     }
-    runtime
+    let view = runtime
         .core
         .refresh_from(&CompletedOutcome(outcome))
-        .map_err(|_| "inventory health could not be applied".to_owned())
+        .map_err(|_| "inventory health could not be applied".to_owned())?;
+    // The held orders are judged again against the read just stored, with the item table they were
+    // fetched against; before any fetch there is no table and nothing held to judge.
+    match runtime.market.cached_items() {
+        Some(items) => runtime
+            .core
+            .rejudge_market_orders(&items)
+            .map_err(|_| "application view is unavailable".to_owned()),
+        None => Ok(view),
+    }
 }
 
 fn initialize_runtime(app: &AppHandle) -> Result<SharedRuntime, Box<dyn std::error::Error>> {

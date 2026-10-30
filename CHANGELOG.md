@@ -22,6 +22,8 @@ see the difference.
   listed beside a set it completes is not counted twice. Covers Prime sets and most non-Prime
   ones (Wraith, Vandal, Sentient and similar); sets the catalogue cannot describe stay
   Unverifiable.
+- **Set listings can be edited from the Orders tab.** Edit listing appears on a set row once your
+  parts complete at least one set, with the quantity capped at how many they complete.
 - **Non-Prime parts get the "Item mastered" tag.** A Wraith, Vandal or syndicate part, or a
   non-Prime blueprint, is tagged once the item it builds is mastered, as Prime parts already were.
 - **The Relics tab search also finds relics by what they drop.** Typing an item name, such as
@@ -40,6 +42,8 @@ see the difference.
 
 ### Fixed
 
+- **The Orders tab updates after each inventory read.** Listings are checked again against the
+  new collection right away, instead of only when the tab is reopened.
 - **The Relics tab lists every relic again.** Relics released since the app's relic data was last
   updated, such as Lith B12 and Lith L8, were missing even with Only owned unticked: the drop
   tables came from a fixed old copy of WFCD's relic list (771 relics), and a copy cached once was

@@ -494,6 +494,38 @@ fn part_listings_spend_their_parts_before_a_set_does() {
     );
 }
 
+/// Each set listing carries how many whole sets the parts left for it complete, the bound its
+/// edit is held to; anything else carries none.
+#[test]
+fn a_set_order_carries_the_sets_its_parts_complete() {
+    let items = MarketItems::from_response(SET_PARTS_ITEMS.as_bytes()).expect("items parse");
+    let recipes = CatalogIndex::from_wfcd_json(SET_PARTS_WFCD).expect("catalog parses");
+    let two_builds = vec![
+        (BRATON_BP, 2, None),
+        (BRATON_BARREL, 3, None),
+        (BRATON_STOCK, 4, None),
+    ];
+    let orders = [
+        sell_order("part-braton-barrel", 1, 1_785_405_600),
+        sell_order("set-braton", 1, 1_785_405_600),
+        sell_order("set-braton", 1, 1_785_405_600),
+    ];
+
+    let reconciled = reconcile_orders(
+        &orders,
+        &items,
+        &collection_holding(two_builds),
+        Some(&snapshot_at(1_785_492_000)),
+        Some(&recipes),
+    );
+
+    let held = reconciled
+        .iter()
+        .map(|entry| entry.sets_held)
+        .collect::<Vec<_>>();
+    assert_eq!(held, vec![None, Some(2), Some(1)]);
+}
+
 /// Two listings of one set share one pool of parts: the second is measured against what the first
 /// leaves, whatever order they arrive in.
 #[test]

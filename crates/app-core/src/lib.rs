@@ -281,6 +281,48 @@ impl AppCore {
         self.current_view()
     }
 
+    /// Judge the orders already held again, against the collection as it now stands.
+    ///
+    /// A fresh inventory read is new evidence about listings fetched before it, and an edit that
+    /// left its listing newer than the old read is answered by the new one. Waiting for the next
+    /// order fetch to say so left a row Unverifiable until the screen was left and reopened. No
+    /// request is made: the orders are the ones already held, and `items` is the table they were
+    /// fetched against. An account that is not linked has nothing to judge.
+    pub fn rejudge_market_orders(&mut self, items: &MarketItems) -> Result<AppView, AppError> {
+        if self.market_account.link != LinkState::Linked {
+            return self.current_view();
+        }
+        let collection = self.store.load_collection()?;
+        let snapshot = self.store.latest_snapshot_meta()?;
+        let orders = self
+            .market_account
+            .orders
+            .iter()
+            .map(|entry| entry.order.clone())
+            .collect::<Vec<_>>();
+        let reconciled = reconcile_orders(
+            &orders,
+            items,
+            &collection,
+            snapshot.as_ref(),
+            self.mastery_catalog.as_deref(),
+        );
+        let held = &self.market_account;
+        let rejudged = MarketAccountView::linked(
+            held.backing.unwrap_or(CredentialBacking::Database),
+            reconciled,
+            held.fetched_at.clone().unwrap_or_default(),
+        )
+        .with_listable(items, &collection);
+        self.market_account = MarketAccountView {
+            backing: held.backing,
+            fetched_at: held.fetched_at.clone(),
+            presence: held.presence,
+            ..rejudged
+        };
+        self.current_view()
+    }
+
     /// A fetch failed. The orders already held stay: the list is still true as of when it was
     /// fetched and its age is on the screen, and replacing a slightly old answer with none is not
     /// an improvement.
@@ -1393,6 +1435,10 @@ pub struct ReconciledOrder {
     /// Whether the order lists whole sets, so an overshoot's count is of sets the parts complete
     /// rather than of copies held.
     pub is_set: bool,
+    /// For a set the recipe describes: how many whole sets the parts left for this listing
+    /// complete, after part listings and earlier listings of the same set take theirs. The bound an
+    /// edit of the set's quantity is held to, the way a part's edit is held to its row's holding.
+    pub sets_held: Option<u32>,
     pub status: OrderStatus,
 }
 
@@ -1429,6 +1475,7 @@ pub fn reconcile_orders(
         .iter()
         .map(|order| status_for(order, items, &owned, snapshot))
         .collect::<Vec<_>>();
+    let mut sets_held = vec![None; orders.len()];
 
     // What part listings leave over for sets. Every unranked sell order on a comparable item
     // claims its share, judged or not: an order newer than the snapshot still promises the copies.
@@ -1451,7 +1498,11 @@ pub fn reconcile_orders(
         }
     }
     if let Some(recipes) = recipes {
-        for (order, status) in orders.iter().zip(statuses.iter_mut()) {
+        for ((order, status), sets_held) in orders
+            .iter()
+            .zip(statuses.iter_mut())
+            .zip(sets_held.iter_mut())
+        {
             if order.kind != OrderKind::Sell || !items.is_set(&order.item_id) {
                 continue;
             }
@@ -1466,6 +1517,7 @@ pub fn reconcile_orders(
                 .map(|slot| slot.held(&left) / slot.per_set)
                 .min()
                 .unwrap_or(0);
+            *sets_held = Some(complete);
             // Spent whether or not this order is judged, so a second listing of the same set is
             // measured against what the first one leaves.
             let spent = complete.min(order.quantity);
@@ -1487,11 +1539,13 @@ pub fn reconcile_orders(
     orders
         .iter()
         .zip(statuses)
-        .map(|(order, status)| ReconciledOrder {
+        .zip(sets_held)
+        .map(|((order, status), sets_held)| ReconciledOrder {
             order: order.clone(),
             name: items.name(&order.item_id).map(str::to_owned),
             row_id: items.row_of(&order.item_id, order.rank, order.subtype.as_deref()),
             is_set: items.is_set(&order.item_id),
+            sets_held,
             status,
         })
         .collect()

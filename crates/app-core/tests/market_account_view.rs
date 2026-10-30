@@ -65,6 +65,7 @@ fn reconciled(order: MarketOrder, status: OrderStatus) -> ReconciledOrder {
         name: Some("Braton Prime Blueprint".to_owned()),
         row_id: Some("/Lotus/Types/Recipes/Weapons/BratonPrimeBlueprint".to_owned()),
         is_set: false,
+        sets_held: None,
         status,
     }
 }
@@ -270,4 +271,49 @@ fn the_listable_set_names_the_rows_the_market_would_accept() {
         ],
         "the part-ranked row is the one refusal in here"
     );
+}
+
+/// A new inventory read judges the orders already held again, with no fetch: a listing edited
+/// after the previous read is answered by the next one instead of staying Unverifiable until the
+/// orders screen is reopened.
+#[test]
+fn a_new_inventory_read_rejudges_the_orders_already_held() {
+    let mut core = AppCore::in_memory().expect("core opens");
+    core.set_market_account(MarketAccountView::linked(
+        CredentialBacking::Keyring,
+        vec![reconciled(
+            order("o1", 12, 2, true),
+            OrderStatus::Unverifiable,
+        )],
+        "1785492000".to_owned(),
+    ))
+    .expect("account set");
+    core.apply_inventory_snapshot(
+        InventorySnapshot::coherent(vec![row(
+            "/Lotus/Types/Recipes/Weapons/BratonPrimeBlueprint",
+            1,
+            None,
+            None,
+        )])
+        .expect("snapshot"),
+        local_store::SnapshotMeta::new(
+            SnapshotInstant::parse_rfc_3339("2026-07-31T12:00:00Z").unwrap(),
+            "build".to_owned(),
+            "test".to_owned(),
+        )
+        .expect("meta"),
+    )
+    .expect("snapshot applies");
+
+    let view = core.rejudge_market_orders(&items()).expect("rejudged");
+
+    let account = view.market_account();
+    assert_eq!(
+        account.orders[0].status,
+        OrderStatus::Overshoot { owned: 1 }
+    );
+    assert_eq!(account.flagged, 1);
+    // The fetch it was judged from is still the one on screen.
+    assert_eq!(account.fetched_at.as_deref(), Some("1785492000"));
+    assert_eq!(account.backing, Some(CredentialBacking::Keyring));
 }

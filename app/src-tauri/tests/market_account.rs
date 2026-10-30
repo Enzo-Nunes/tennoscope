@@ -275,6 +275,7 @@ fn order(id: &str, status: OrderStatus) -> ReconciledOrder {
         name: Some("Braton Prime Blueprint".to_owned()),
         row_id: Some("/Lotus/Types/Recipes/Weapons/BratonPrimeBlueprint".to_owned()),
         is_set: false,
+        sets_held: None,
         status,
     }
 }
@@ -547,6 +548,36 @@ fn an_edit_is_refused_for_an_order_that_names_no_row() {
     assert_eq!(
         authorize_update(&view, &Collection::default(), "order-one", 1),
         Err(ORDER_NOT_ON_A_ROW)
+    );
+}
+
+/// A set names no row but the reconciliation counts the whole sets its parts complete, and that
+/// count is the edit's bound: up to it is allowed, past it is the overshoot created by hand, and a
+/// set whose parts complete none cannot be edited at all.
+#[test]
+fn a_set_edit_is_bounded_by_the_sets_its_parts_complete() {
+    let set = |id: &str, sets: u32| {
+        let mut set = order(id, OrderStatus::Ok);
+        set.row_id = None;
+        set.is_set = true;
+        set.sets_held = Some(sets);
+        set
+    };
+    let view = MarketAccountView::linked(
+        CredentialBacking::Database,
+        vec![set("two", 2), set("none", 0)],
+        "2026-07-31T12:00:00Z".to_owned(),
+    );
+
+    authorize_update(&view, &Collection::default(), "two", 2)
+        .expect("every complete set may be listed");
+    assert_eq!(
+        authorize_update(&view, &Collection::default(), "two", 3),
+        Err(ORDER_EXCEEDS_HOLDING)
+    );
+    assert_eq!(
+        authorize_update(&view, &Collection::default(), "none", 1),
+        Err(ITEM_NOT_OWNED)
     );
 }
 
