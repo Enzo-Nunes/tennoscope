@@ -1036,6 +1036,12 @@ async fn refresh_inventory(state: State<'_, SharedRuntime>) -> Result<AppView, S
 /// What comes back is written into the persisted price table, not left in the 15-minute live
 /// cache. A price the player deliberately asked for is the best number the app has for that item,
 /// and letting it expire back to a day-old figure would discard a request they spent.
+///
+/// The Collection page asks for this by itself when a page of items comes into view; there is no
+/// manual control. So the politeness lives here rather than with the player: only items
+/// warframe.market has not already answered about against today's dump (a price or no sellers),
+/// and not in the live cache, are asked about. Each item costs at most one request a dump day
+/// however often the page is visited.
 #[tauri::command]
 async fn refresh_prices(
     item_ids: Vec<String>,
@@ -1047,16 +1053,22 @@ async fn refresh_prices(
             let runtime = shared
                 .lock()
                 .map_err(|_| "application state is unavailable".to_owned())?;
-            (
-                runtime
-                    .core
-                    .market_names_for(&item_ids)
-                    .map_err(|_| "collection items could not be resolved".to_owned())?,
-                runtime.live_prices.clone(),
-                runtime.app_data.clone(),
-            )
+            let mut names = runtime
+                .core
+                .market_names_for(&item_ids)
+                .map_err(|_| "collection items could not be resolved".to_owned())?;
+            let table = runtime.core.collection_prices();
+            names.retain(|name| {
+                runtime.live_prices.get(name).is_none()
+                    && !table
+                        .as_ref()
+                        .is_some_and(|table| table.has_been_checked(name))
+            });
+            (names, runtime.live_prices.clone(), runtime.app_data.clone())
         };
-        if let Some(market) = warframe_acquisition::WarframeMarketHttp::new() {
+        if !names.is_empty()
+            && let Some(market) = warframe_acquisition::WarframeMarketHttp::new()
+        {
             let (outcome, unpriced) = warm_with_progress(&shared, &market, &names, &cache);
             let persisted = store_checked_prices(
                 &shared,

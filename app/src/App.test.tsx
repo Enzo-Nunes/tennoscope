@@ -392,10 +392,7 @@ describe('MVP desktop interface', () => {
     backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'companion', desktop_capture_action_available: false })
     render(<App />)
     // Prices come from the dump and explicit checks, not the game: no ownership to verify.
-    const priceButton = await screen.findByRole('button', { name: /Price these/ })
-    expect(priceButton).toBeEnabled()
-    await userEvent.click(priceButton)
-    expect(backend.refreshPrices).toHaveBeenCalledOnce()
+    await waitFor(() => expect(backend.refreshPrices).toHaveBeenCalledOnce(), { timeout: 3000 })
     expect(screen.getByRole('button', { name: 'Refresh inventory' })).toBeDisabled()
   })
 
@@ -867,9 +864,42 @@ describe('MVP desktop interface', () => {
     backend.refreshPrices.mockImplementationOnce(() => new Promise(() => {}))
     render(<App />)
     await act(async () => {})
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Price these/ })) })
+    // The page starts its own pass after a moment in view, and that pass never resolves here.
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500) })
+    expect(backend.refreshPrices).toHaveBeenCalledOnce()
     await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
     expect(backend.getView).toHaveBeenCalledTimes(3)
+  })
+
+  // The page prices itself once the player rests on it, asking only about what still shows a dump
+  // price. Lith A1 is already checked live, and the unowned and unresolvable rows are never sent.
+  it('prices the visible page live on its own once it has been in view for a moment', async () => {
+    vi.useFakeTimers()
+    backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
+    backend.getView.mockResolvedValue(view)
+    render(<App />)
+    await act(async () => {})
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(backend.refreshPrices).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+    expect(backend.refreshPrices).toHaveBeenCalledOnce()
+    const requested = backend.refreshPrices.mock.calls[0][0]
+    expect(requested).toEqual(expect.arrayContaining(['rhino', 'lex-prime-receiver', 'zenith-prime-receiver']))
+    expect(requested).not.toContain('lith-a1')
+    expect(requested).not.toContain('forma-blueprint')
+    expect(requested).not.toContain('bad-baby')
+  })
+
+  // Whatever comes back unpriced (nobody selling, the market down) still reads as unchecked, so
+  // the same page must not be sent again on every poll.
+  it('asks about the same unchecked page only once', async () => {
+    vi.useFakeTimers()
+    backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
+    backend.getView.mockResolvedValue(view)
+    render(<App />)
+    await act(async () => {})
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
+    expect(backend.refreshPrices).toHaveBeenCalledOnce()
   })
 
   // The readout belongs to the backend, which is the only party that knows a pass's total.
@@ -881,14 +911,16 @@ describe('MVP desktop interface', () => {
     expect(await screen.findByText(/Checking live prices · 12 of 65/)).toBeInTheDocument()
   })
 
-  // Every pass comes out of one three-requests-a-second budget, so letting a click overlap one
-  // already running only makes each slower and leaves the one readout describing two queues.
-  it('refuses a page refresh while a background pass is already spending requests', async () => {
+  // Every pass comes out of one three-requests-a-second budget, so starting a second one beside a
+  // pass already running only makes each slower and leaves the one readout describing two queues.
+  it('starts no pass of its own while another is already spending requests', async () => {
+    vi.useFakeTimers()
     backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
     backend.getView.mockResolvedValue({ ...view, collection: { ...view.collection, pricing: { done: 3, total: 65 } } })
     render(<App/>)
-
-    expect(await screen.findByRole('button', { name: /Pricing/ })).toBeDisabled()
+    await act(async () => {})
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+    expect(backend.refreshPrices).not.toHaveBeenCalled()
   })
 
   it('stops scheduled polling after unmount', async () => {
@@ -1209,24 +1241,21 @@ describe('MVP desktop interface', () => {
     expect(within(daily).queryByText(/checked/i)).not.toBeInTheDocument()
   })
 
-  // Someone who clicks it should not have to guess whether it prices the page or the collection,
-  // or find that two of the items it counted were never going to be asked about. The fixture's
-  // visible page carries eight owned items; the quantity-0 Forma Blueprint and the unresolvable
-  // Bad Baby are both left out, leaving seven the backend will actually send.
-  it('names how many items the refresh will price, and counts only ones it can price', async () => {
+  // How often warframe.market is asked is the program's decision, not the player's.
+  it('offers no manual control for live pricing', async () => {
     backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
     render(<App/>)
-    expect(await screen.findByRole('button', { name: /Price these 7/ })).toBeInTheDocument()
+    await screen.findByRole('heading', { name: 'Your collection' })
+    expect(screen.queryByRole('button', { name: /Price these/ })).not.toBeInTheDocument()
   })
 
   // A relic no dump in the last month saw trade is unpriced, and an unpriced item is precisely
-  // the one a manual refresh exists for. Sending only already-priced items would close the recovery
+  // the one live pricing exists for. Sending only already-priced items would close the recovery
   // path against the items that need it.
-  it('offers to price an owned item that has no price yet, and never an unowned one', async () => {
+  it('prices an owned item that has no price yet, and never an unowned one', async () => {
     backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
-    const user = userEvent.setup()
     render(<App/>)
-    await user.click(await screen.findByRole('button', { name: /Price these/ }))
+    await waitFor(() => expect(backend.refreshPrices).toHaveBeenCalled(), { timeout: 3000 })
 
     const requested = backend.refreshPrices.mock.calls[0][0]
     expect(requested).toContain('rhino')             // owned, no price yet
@@ -1326,10 +1355,10 @@ describe('MVP desktop interface', () => {
     render(<App/>)
     await user.click(await screen.findByRole('button', { name: 'Tradeable' }))
     await user.click(await screen.findByRole('button', { name: 'Go to page 2' }))
-    await user.click(screen.getByRole('button', { name: /Price these/ }))
 
     // Page 2 of 53 tradeable items (50 filler + 3 named) holds only the last 5, alphabetically.
-    expect(backend.refreshPrices).toHaveBeenCalledWith(['filler-48', 'filler-49', 'lex-prime-receiver', 'lith-a1', 'zenith-prime-receiver'])
+    // Lith A1 is already checked live, so it is not asked about again.
+    await waitFor(() => expect(backend.refreshPrices).toHaveBeenCalledWith(['filler-48', 'filler-49', 'lex-prime-receiver', 'zenith-prime-receiver']), { timeout: 3000 })
   })
 
   it('routes to the Orders section and counts flagged listings on the nav entry', async () => {

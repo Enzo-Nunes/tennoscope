@@ -351,15 +351,17 @@ function App() {
    * it. Ordering remains coherent: `requestView` applies a response only while its request is
    * newest one started, so an older view can never land on top of a newer one.
    *
-   * The local flag exists only to hold the control down for the up-to-2.5s gap before the poll
-   * carries the backend's own progress. The counting is the backend's: it is the only party that
-   * knows the total, and it publishes the count the same way for every pass.
+   * The Collection page starts this on its own when a page has been in view for a moment; there is
+   * no button for it. The backend asks only about items warframe.market has not answered about
+   * against today's dump, so each item costs at most one paced request a dump day, and a page
+   * already checked costs nothing. The local flag covers the up-to-2.5s gap before the poll
+   * carries the backend's own progress.
    */
-  async function priceLive(ids: string[]) {
+  const priceLive = useCallback(async (ids: string[]) => {
     setPricing(true)
     await requestView(() => refreshPrices(ids), 'Live prices could not be fetched.')
     setPricing(false)
-  }
+  }, [requestView])
 
   /**
    * Every market write goes through here: fresh view on success, a banner on failure. The optional
@@ -585,6 +587,10 @@ function LoadingView() {
   </section>
 }
 
+/** How long a page has to stay in view before it is priced live: long enough that paging or typing
+ * through results does not start a pass per keystroke. */
+const AUTO_PRICE_DELAY_MS = 1200
+
 function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor, showDucats, onToggleDucats, onSell, onUpdate, ordersBusy }: { view: AppView; effectiveMode: AccessMode; pricing: boolean; onPriceLive: (ids: string[]) => void; priceFloor: number; showDucats: boolean; onToggleDucats: () => void; onSell: SellHandler; onUpdate: UpdateHandler; ordersBusy: boolean }) {
   const ownershipVerified = effectiveMode === 'full'
   const snapshotOnly = !ownershipVerified
@@ -631,17 +637,27 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
   const visibleItems = pageItems(filtered, currentPage)
   const firstResult = filtered.length ? (currentPage - 1) * COLLECTION_PAGE_SIZE + 1 : 0
   const lastResult = Math.min(currentPage * COLLECTION_PAGE_SIZE, filtered.length)
-  // What the refresh can *attempt*, not what already has a number. A relic is priced only if some
-  // dump in the last month saw it trade, so a thinly-traded one is unpriced, and excluding unpriced
-  // items would close the manual path against exactly the items that need it. `priceable` is the backend's own answer to "can warframe.market be asked about
-  // this": it drops every name the price table cannot resolve, so counting owned items instead
-  // promised prices for items no request was ever going to be made for. Quantity 0 is not owned and
-  // is never priceable.
-  const pricableVisibleIds = visibleItems.filter(item => item.priceable).map(item => item.id)
   // One readout for the whole page, published by the backend rather than counted here: it is the
   // party that knows the total, and every pass comes out of one rate-limited budget, so a second
   // counter would be describing one queue twice.
   const inProgress = view.collection.pricing ?? null
+  // What is on screen still showing a dump price. Once the player has rested on a page for a
+  // moment it is priced live without being asked. `priceable` is the backend's own answer to "can
+  // warframe.market be asked about this", so unowned and unresolvable rows are never sent. Each set
+  // is tried once: what comes back unpriced (nobody selling, or the market unreachable) keeps
+  // `live` false, and re-sending the same page would only loop on it.
+  const uncheckedVisibleIds = visibleItems.filter(item => item.priceable && !item.live).map(item => item.id)
+  const uncheckedKey = uncheckedVisibleIds.join('\n')
+  const autoPriced = useRef(new Set<string>())
+  const passRunning = pricing || inProgress !== null
+  useEffect(() => {
+    if (!uncheckedKey || passRunning || autoPriced.current.has(uncheckedKey)) return
+    const timer = setTimeout(() => {
+      autoPriced.current.add(uncheckedKey)
+      onPriceLive(uncheckedKey.split('\n'))
+    }, AUTO_PRICE_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [uncheckedKey, passRunning, onPriceLive])
   const dumpDate = view.health.collection_prices.last_success
   // You can only sort by what is on screen. Hiding ducat values retires their sort with them, and
   // the pressed chip moves to platinum in plain sight rather than leaving an invisible criterion
@@ -755,15 +771,6 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
             <span className="register-line">{dumpDate ? `Prices from the ${shortDumpDate(dumpDate)} market summary` : 'No price summary loaded yet'}</span>
             <span className="register-line">{firstResult}–{lastResult} of {filtered.length}</span>
             {inProgress && <span className="register-line pricing" role="status">Checking live prices · {inProgress.done} of {inProgress.total}</span>}
-          {/* Live prices come from the market dump and explicit price checks, neither of which
-              reads the game or needs verified ownership: Companion and Overlay keep valuation.
-              Selling still needs Full, and that gate lives on the sell controls, not here. */}
-          <button
-            type="button"
-            className="stamp"
-            disabled={pricing || inProgress !== null || pricableVisibleIds.length === 0}
-            onClick={() => onPriceLive(pricableVisibleIds)}
-          ><span>{pricing || inProgress ? 'Pricing…' : `Price these ${pricableVisibleIds.length}`}</span></button>
           </div>
         </div>
       </div>
