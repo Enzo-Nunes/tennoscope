@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { atMaxRank, collectionTotals, masteryOrder, pageCount, pageItems, pageNumbers, rankLabel, sellableValue, stackValue } from './collection'
+import { atMaxRank, collectionTotals, ducatsPerPlatinum, masteryOrder, pageCount, pageItems, pageNumbers, rankLabel, sellableValue, stackValue } from './collection'
 
 describe('collection pagination', () => {
   it('renders at most 48 items and returns the expected range', () => {
@@ -142,5 +142,21 @@ describe('masteryOrder', () => {
     expect(masteryOrder({ category: 'mod', mastered: false })).toBe(2)
     expect(masteryOrder({ category: 'prime_part', mastered: false })).toBe(2)
     expect(masteryOrder({ category: 'relic', mastered: true })).toBe(2)
+  })
+})
+
+describe('ducatsPerPlatinum', () => {
+  it('divides ducats by the unit price', () => {
+    expect(ducatsPerPlatinum({ ducats: 100, platinum: 8 })).toBe(12.5)
+    expect(ducatsPerPlatinum({ ducats: 45, platinum: 9 })).toBe(5)
+  })
+
+  it('reads a sub-platinum price as one platinum', () => {
+    expect(ducatsPerPlatinum({ ducats: 45, platinum: 0 })).toBe(45)
+  })
+
+  it('has no ratio without both readings', () => {
+    expect(ducatsPerPlatinum({ ducats: 45 })).toBeUndefined()
+    expect(ducatsPerPlatinum({ platinum: 10 })).toBeUndefined()
   })
 })

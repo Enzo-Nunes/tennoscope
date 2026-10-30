@@ -1130,6 +1130,42 @@ describe('MVP desktop interface', () => {
     ])
   })
 
+  // What to hand Baro first is what gives up the least platinum per ducat. A part with ducats but
+  // no price follows the ranked ones (its ratio is unknown, not poor), and equal ratios put the
+  // bigger payout first.
+  it('sorts by ducats per platinum while the values are shown', async () => {
+    backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
+    backend.getView.mockResolvedValue({
+      ...view,
+      collection: {
+        ...view.collection,
+        total_entries: 6,
+        items: [
+          { id: 'braton', name: 'Braton', category: 'weapon', quantity: 1, mastered: false, live: false, priceable: true, platinum: 20 },
+          { id: 'lex-prime-receiver', name: 'Lex Prime Receiver', category: 'prime_part', quantity: 1, mastered: false, live: false, priceable: true, ducats: 15, platinum: 3 },
+          { id: 'paris-prime-string', name: 'Paris Prime String', category: 'prime_part', quantity: 2, mastered: false, live: false, priceable: true, ducats: 45, platinum: 9 },
+          { id: 'ash-prime-systems', name: 'Ash Prime Systems', category: 'prime_part', quantity: 1, mastered: false, live: false, priceable: true, ducats: 100, platinum: 40 },
+          { id: 'nami-prime-blade', name: 'Nami Prime Blade', category: 'prime_part', quantity: 1, mastered: false, live: false, priceable: true, ducats: 100, platinum: 8 },
+          { id: 'kogake-prime-gauntlet', name: 'Kogake Prime Gauntlet', category: 'prime_part', quantity: 1, mastered: false, live: false, priceable: true, ducats: 45 },
+        ],
+      },
+    })
+    const user = userEvent.setup()
+    render(<App/>)
+    await screen.findByRole('heading', { name: 'Your collection' })
+    await user.click(screen.getByRole('button', { name: 'Ducats per plat' }))
+
+    const names = screen.getAllByRole('article').map(article => article.getAttribute('aria-label'))
+    expect(names).toEqual([
+      'Nami Prime Blade',       // 100 / 8 = 12.5
+      'Paris Prime String',     // 45 / 9 = 5, ties with the next and pays more
+      'Lex Prime Receiver',     // 15 / 3 = 5
+      'Ash Prime Systems',      // 100 / 40 = 2.5
+      'Kogake Prime Gauntlet',  // ducats but no price yet
+      'Braton',                 // no ducats
+    ])
+  })
+
   // A sort over numbers the screen is not showing would reorder the register invisibly, so the
   // ducat sort belongs to the layer the switch governs. Off, the chip retires with the badges,
   // and the pressed chip moves to platinum in plain sight rather than silently.
@@ -1144,6 +1180,7 @@ describe('MVP desktop interface', () => {
     await user.click(screen.getByRole('switch', { name: 'Ducat values' }))
 
     expect(screen.queryByRole('button', { name: 'Ducats' }), 'no sorting by an invisible reading').not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Ducats per plat' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Platinum' })).toHaveAttribute('aria-pressed', 'true')
   })
 

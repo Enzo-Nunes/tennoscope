@@ -61,6 +61,17 @@ export function masteryOrder(item: { category: string; mastered: boolean }): 0 |
   return item.mastered ? 1 : 0
 }
 
+/**
+ * Ducats paid per platinum given up, the measure for what to hand Baro rather than the market: a
+ * 100-ducat part at 5p beats a 100-ducat part at 40p. Undefined without both readings. A price under
+ * 1p is read as 1p, the smallest trade there is, so a near-free part ranks high instead of dividing
+ * by zero.
+ */
+export function ducatsPerPlatinum(item: { ducats?: number; platinum?: number }): number | undefined {
+  if (item.ducats === undefined || item.platinum === undefined) return undefined
+  return item.ducats / Math.max(item.platinum, 1)
+}
+
 /** The collection's ownership, mastery and exchange-value bands. */
 export function collectionTotals(items: readonly CollectionItem[], priceFloor: number): CollectionTotals {
   const totals: CollectionTotals = {

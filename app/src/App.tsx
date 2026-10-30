@@ -38,7 +38,7 @@ import { MetalMark } from './MetalMark'
 import { OrdersView } from './OrdersView'
 import { isListable, listedLabel, listedOrderFor } from './orders'
 import { SellForm, type SellHandler, type UpdateHandler } from './SellForm'
-import { atMaxRank, clampPage, collectionTotals, COLLECTION_PAGE_SIZE, masteryOrder, pageCount, pageItems, pageNumbers, rankLabel, stackValue } from './collection'
+import { atMaxRank, clampPage, collectionTotals, COLLECTION_PAGE_SIZE, ducatsPerPlatinum, masteryOrder, pageCount, pageItems, pageNumbers, rankLabel, stackValue } from './collection'
 import { MAX_PRICE_FLOOR, readPriceFloor, readShowDucats, writePriceFloor, writeShowDucats } from './settings'
 import { snapshotFreshness, stampReading } from './freshness'
 import { bootUpdateChecks } from './updateStore'
@@ -51,7 +51,7 @@ import { accessMode } from './access'
 
 type Page = 'collection' | 'mastery' | 'relics' | 'rewards' | 'orders' | 'diagnostics' | 'settings' | 'about'
 type Ownership = 'all' | 'owned' | 'mastered' | 'missing' | 'tradeable'
-type Sort = 'name-asc' | 'quantity-desc' | 'category-asc' | 'mastery-asc' | 'platinum-desc' | 'ducats-desc'
+type Sort = 'name-asc' | 'quantity-desc' | 'category-asc' | 'mastery-asc' | 'platinum-desc' | 'ducats-desc' | 'ducat-ratio-desc'
 
 const categories: Array<{ value: ItemCategory | 'all'; label: string; tally: string }> = [
   { value: 'all', label: 'All categories', tally: '✳' },
@@ -77,7 +77,15 @@ const sortOptions: Array<{ value: Sort; label: string; metal?: 'plat' | 'ducat' 
   { value: 'mastery-asc', label: 'Unmastered first' },
   { value: 'platinum-desc', label: 'Platinum', metal: 'plat' },
   { value: 'ducats-desc', label: 'Ducats', metal: 'ducat' },
+  { value: 'ducat-ratio-desc', label: 'Ducats per plat', metal: 'ducat' },
 ]
+
+// Best to sell to Baro first: the most ducats per platinum given up. A part with ducats but no
+// price yet follows the ranked ones, since its ratio is unknown rather than poor, and everything
+// that earns no ducats comes last. Equal ratios put the bigger ducat payout first.
+function ducatRatioRank(item: { ducats?: number; platinum?: number }): number {
+  return ducatsPerPlatinum(item) ?? (item.ducats === undefined ? -2 : -1)
+}
 
 const categoryName = Object.fromEntries(categories.map(category => [category.value, category.label])) as Record<ItemCategory | 'all', string>
 
@@ -614,7 +622,9 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
               ? (right.platinum ?? -1) - (left.platinum ?? -1) || left.name.localeCompare(right.name)
               : sort === 'ducats-desc'
                 ? (right.ducats ?? -1) - (left.ducats ?? -1) || left.name.localeCompare(right.name)
-                : left.name.localeCompare(right.name))
+                : sort === 'ducat-ratio-desc'
+                  ? ducatRatioRank(right) - ducatRatioRank(left) || (right.ducats ?? -1) - (left.ducats ?? -1) || left.name.localeCompare(right.name)
+                  : left.name.localeCompare(right.name))
   }, [view.collection.items, search, category, ownership, sort])
   const totalPages = pageCount(filtered.length)
   const currentPage = clampPage(page, filtered.length)
@@ -636,9 +646,9 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
   // You can only sort by what is on screen. Hiding ducat values retires their sort with them, and
   // the pressed chip moves to platinum in plain sight rather than leaving an invisible criterion
   // reorder the register.
-  const sorts = showDucats ? sortOptions : sortOptions.filter(option => option.value !== 'ducats-desc')
+  const sorts = showDucats ? sortOptions : sortOptions.filter(option => option.metal !== 'ducat')
   useEffect(() => {
-    if (!showDucats && sort === 'ducats-desc') setSort('platinum-desc')
+    if (!showDucats && (sort === 'ducats-desc' || sort === 'ducat-ratio-desc')) setSort('platinum-desc')
   }, [showDucats, sort])
   useEffect(() => {
     if (!ownershipVerified) setOwnership('all')
