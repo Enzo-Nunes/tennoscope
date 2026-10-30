@@ -307,3 +307,24 @@ fn no_collection_means_unknown_and_non_mastery_items_get_no_mark() {
     assert_eq!(ledger.reward_mark("Kavasa Prime Kubrow Collar Band"), None);
     assert_eq!(ledger.reward_mark("Not An Item"), None);
 }
+
+#[test]
+fn a_part_or_its_blueprint_reads_mastered_by_path_once_its_item_and_consumers_are() {
+    let catalog = catalog();
+    let held = holdings(&[], &[GUANDAO, REVENANT, BRONCO]);
+    let ledger = MasteryLedger::new(&catalog, &held, None);
+    assert!(ledger.part_item_mastered(GUANDAO_BLADE));
+    assert!(ledger.part_item_mastered(GUANDAO_BP));
+    assert!(ledger.part_item_mastered(REVENANT_CHASSIS));
+    assert!(ledger.part_item_mastered(REVENANT_CHASSIS_BP));
+    assert!(
+        !ledger.part_item_mastered(BRONCO_BARREL),
+        "Akbronco is not mastered, so Bronco parts may still be needed"
+    );
+    assert!(!ledger.part_item_mastered(AKBRONCO_LINK));
+    assert!(!ledger.part_item_mastered(KAVASA_BAND));
+    assert!(!ledger.part_item_mastered(GUANDAO));
+    assert!(!ledger.part_item_mastered(OROKIN_CELL));
+    let both = holdings(&[], &[BRONCO, AKBRONCO]);
+    assert!(MasteryLedger::new(&catalog, &both, None).part_item_mastered(BRONCO_BARREL));
+}

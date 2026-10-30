@@ -303,6 +303,18 @@ impl AppCore {
         let collection = self.store.load_collection()?;
         let snapshot = self.store.latest_snapshot_meta()?;
         let mastery = self.mastery_checklist(&collection, snapshot.is_some())?;
+        // A part is never mastered itself; it reads mastered through the item it builds. Saved
+        // mastery is enough to prove that, so this holds under every access mode.
+        let holdings = Holdings::from_entries(collection.entries());
+        let ledger = self
+            .mastery_catalog
+            .as_deref()
+            .map(|catalog| MasteryLedger::new(catalog, &holdings, None));
+        let item_mastered = |entry: &warframe_domain::InventoryEntry| {
+            ledger
+                .as_ref()
+                .is_some_and(|ledger| ledger.part_item_mastered(entry.item.id.catalog_path()))
+        };
         let mut items = collection
             .entries()
             .map(|entry| {
@@ -312,7 +324,9 @@ impl AppCore {
                 // could make, and the number on a missing part is what tells the player
                 // which relic reward to take.
                 if entry.quantity == 0 {
-                    return CollectionItemView::from(entry).with_ducats(self.ducats_for(entry));
+                    return CollectionItemView::from(entry)
+                        .with_ducats(self.ducats_for(entry))
+                        .with_item_mastered(item_mastered(entry));
                 }
                 // Both lookups go through the market's own name for the item: the live cache is
                 // keyed by what was asked for, and that is never the catalog's name for a relic.
@@ -372,6 +386,7 @@ impl AppCore {
                         .and_then(|(name, prices)| prices.monthly_trades(name)),
                 )
                 .with_ducats(self.ducats_for(entry))
+                .with_item_mastered(item_mastered(entry))
             })
             .collect::<Vec<_>>();
         items.sort_by(|left, right| left.id.cmp(&right.id));
@@ -954,6 +969,10 @@ pub struct CollectionItemView {
     category: Category,
     quantity: u32,
     mastered: bool,
+    /// A part or blueprint whose item, and everything built from that item, is mastered. Never
+    /// set on the equipment row itself, which says so through `mastered`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    item_mastered: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     image_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1001,6 +1020,11 @@ impl CollectionItemView {
 
     pub fn mastered(&self) -> bool {
         self.mastered
+    }
+
+    /// Whether this part builds an item the account has fully mastered.
+    pub fn item_mastered(&self) -> bool {
+        self.item_mastered
     }
 
     pub fn image_url(&self) -> Option<&str> {
@@ -1074,6 +1098,11 @@ impl CollectionItemView {
         self.ducats = ducats;
         self
     }
+
+    fn with_item_mastered(mut self, item_mastered: bool) -> Self {
+        self.item_mastered = item_mastered;
+        self
+    }
 }
 
 impl From<&warframe_domain::InventoryEntry> for CollectionItemView {
@@ -1084,6 +1113,7 @@ impl From<&warframe_domain::InventoryEntry> for CollectionItemView {
             category: entry.item.category,
             quantity: entry.quantity,
             mastered: entry.mastered,
+            item_mastered: false,
             image_url: entry.item.image_name.as_ref().map(|name| {
                 format!(
                     "https://raw.githubusercontent.com/WFCD/warframe-items/master/data/img/{name}"

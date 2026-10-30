@@ -615,7 +615,7 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
       .filter(item => category === 'all' || item.category === category)
       .filter(item => ownership === 'all'
         || (ownership === 'owned' && item.quantity > 0)
-        || (ownership === 'mastered' && item.mastered)
+        || (ownership === 'mastered' && (item.mastered || item.item_mastered === true))
         || (ownership === 'missing' && item.quantity === 0)
         || (ownership === 'tradeable' && item.platinum !== undefined))
       .toSorted((left, right) => sort === 'quantity-desc'
@@ -947,6 +947,7 @@ function CollectionEntry({ item, ownershipVerified, showDucats, listedOrder, sel
           : null}
         {rankLabel(item) && <span className={`hallmark rank${atMaxRank(item) ? ' maxed' : ''}`}>{rankLabel(item)}</span>}
         {ownershipVerified && item.mastered && <span className="hallmark mastered">Mastered</span>}
+        {ownershipVerified && item.item_mastered && <span className="hallmark mastered">Item mastered</span>}
         {listedOrder && <span className="hallmark">{listedLabel(listedOrder, item.quantity)}</span>}
         {item.platinum !== undefined && <span className={`price${item.live ? ' live' : ''}`}>
           <MetalMark metal="plat" alt="platinum "/>

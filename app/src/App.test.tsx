@@ -450,6 +450,29 @@ describe('MVP desktop interface', () => {
     expect(screen.getByRole('article', { name: 'Rhino' })).toHaveTextContent('Mastered')
   })
 
+  // A part is never mastered itself, so the Mastered filter would never show one. It counts once
+  // the item it builds is mastered, and the card says which kind of mastered it is.
+  it('lists a part of a mastered item under the Mastered filter', async () => {
+    backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
+    backend.getView.mockResolvedValue({
+      ...view,
+      collection: {
+        total_entries: 3,
+        items: [
+          { id: 'rhino', name: 'Rhino Prime', category: 'frame', quantity: 1, mastered: true, live: false, priceable: false },
+          { id: 'rhino-systems', name: 'Rhino Prime Systems', category: 'prime_part', quantity: 1, mastered: false, item_mastered: true, live: false, priceable: true },
+          { id: 'ember-systems', name: 'Ember Prime Systems', category: 'prime_part', quantity: 1, mastered: false, live: false, priceable: true },
+        ],
+      },
+    })
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Your collection' })
+    await userEvent.click(within(screen.getByRole('group', { name: 'Ownership filters' })).getByRole('button', { name: 'Mastered' }))
+    expect(screen.getByRole('article', { name: 'Rhino Prime' })).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'Rhino Prime Systems' })).toHaveTextContent('Item mastered')
+    expect(screen.queryByRole('article', { name: 'Ember Prime Systems' })).not.toBeInTheDocument()
+  })
+
   // Three copies of a mod at three ranks are three holdings at three prices. The cards must be
   // tellable apart by name alone, and the one nobody quotes must read as bracketed rather than
   // borrow either end.

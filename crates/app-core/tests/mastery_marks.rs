@@ -117,3 +117,51 @@ fn a_failed_refresh_keeps_the_last_good_facts() {
         MasteryEvidence::Live
     );
 }
+
+/// A part is never mastered itself. The collection marks it through the item it builds, so the
+/// Mastered filter can show the parts that are safe to let go.
+#[test]
+fn a_part_of_a_mastered_item_reads_item_mastered_in_the_collection() {
+    let blade = InventoryEntry::new(
+        CatalogItem::new(
+            ItemId::new("/Lotus/Types/Recipes/Weapons/WeaponParts/GuandaoPrimeBlade").unwrap(),
+            "Guandao Prime Blade",
+            Category::PrimePart,
+        )
+        .unwrap(),
+        2,
+    );
+    let mut core = AppCore::in_memory().unwrap();
+    core.apply_inventory_snapshot(
+        InventorySnapshot::coherent(vec![mastered_guandao(), blade.clone()]).unwrap(),
+        SnapshotMeta::fake("saved").unwrap(),
+    )
+    .unwrap();
+    let blade_of = |core: &AppCore| {
+        core.current_view()
+            .unwrap()
+            .collection()
+            .items()
+            .iter()
+            .find(|item| item.name() == "Guandao Prime Blade")
+            .map(|item| (item.mastered(), item.item_mastered()))
+    };
+    assert_eq!(
+        blade_of(&core),
+        Some((false, false)),
+        "no catalog, no claim"
+    );
+
+    core.set_mastery_catalog(Arc::new(guandao_catalog()));
+    assert_eq!(blade_of(&core), Some((false, true)));
+
+    let mut unmastered = AppCore::in_memory().unwrap();
+    unmastered
+        .apply_inventory_snapshot(
+            InventorySnapshot::coherent(vec![blade]).unwrap(),
+            SnapshotMeta::fake("saved").unwrap(),
+        )
+        .unwrap();
+    unmastered.set_mastery_catalog(Arc::new(guandao_catalog()));
+    assert_eq!(blade_of(&unmastered), Some((false, false)));
+}

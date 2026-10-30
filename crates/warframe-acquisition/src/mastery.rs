@@ -110,6 +110,22 @@ impl<'a> MasteryLedger<'a> {
         }
     }
 
+    /// Whether a part or its blueprint, by catalog path, builds an item the account has mastered
+    /// along with everything built from that item: the rule a saved collection's Mastered mark
+    /// follows, so it needs no live facts. False for a part of an item mastery never touches.
+    pub fn part_item_mastered(&self, part_path: &str) -> bool {
+        self.catalog
+            .part_parent(part_path)
+            .is_some_and(|(recipe, _)| {
+                let parent = recipe.parent.as_str();
+                self.catalog
+                    .resolve(parent)
+                    .is_some_and(|metadata| metadata.masterable())
+                    && self.closed(parent)
+                    && self.all_consumers_closed(parent)
+            })
+    }
+
     /// A reward name to its parent recipe and the slot it fills there. Nothing when the name
     /// is not a part, or when the parent is an item mastery never touches.
     fn resolve(&self, reward_name: &str) -> Option<(&'a Recipe, usize)> {
