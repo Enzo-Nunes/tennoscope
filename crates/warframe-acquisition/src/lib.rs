@@ -28,8 +28,8 @@ pub use catalog::{
 };
 pub use catalog_cache::{
     CatalogCache, CatalogCacheError, CatalogFetch, CatalogLoad, CatalogLoadSource, CatalogSource,
-    RelicCatalogCache, RelicCatalogLoad, RelicCatalogSource, WFCD_ALL_JSON_URL,
-    WFCD_RELICS_JSON_URL, WfcdCatalogHttp, WfcdRelicCatalogHttp,
+    RELIC_CATALOG_MAX_AGE_SECS, RelicCatalogCache, RelicCatalogLoad, RelicCatalogSource,
+    WFCD_ALL_JSON_URL, WFCD_RELICS_JSON_URL, WfcdCatalogHttp, WfcdRelicCatalogHttp,
 };
 pub use collection_prices::{
     CollectionPriceCache, CollectionPriceSource, DUMP_LOOKBACK_DAYS, MAX_DUMP_BYTES,

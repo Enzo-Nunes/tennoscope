@@ -130,11 +130,17 @@ function OrderRow({ entry, items, busy, onRemove, onLowerTo, onSell, onUpdate }:
   const fix = fixLabel(entry.status)
   const value = orderValue(entry.order)
   const overshoot = entry.status.state === 'overshoot' ? entry.status.owned : null
-  // The edit is bounded by a holding, so it is offered only where the order names one held row.
-  // A set, a sculpture, a buy order: real rows, no edit, same honesty as everywhere else.
-  const held = entry.order.kind === 'sell' && entry.row_id
-    ? items.find(item => item.id === entry.row_id && item.quantity > 0)
-    : undefined
+  // The edit is bounded by a holding, so it is offered only where the order names one held row,
+  // or is a set whose parts complete at least one: its holding is that count of whole sets, the
+  // same bound the backend holds the write to. A sculpture, a buy order, a set no recipe
+  // describes: real rows, no edit, same honesty as everywhere else.
+  const held = entry.order.kind !== 'sell'
+    ? undefined
+    : entry.row_id
+      ? items.find(item => item.id === entry.row_id && item.quantity > 0)
+      : entry.is_set && (entry.sets_held ?? 0) > 0
+        ? { id: entry.order.item_id, name: entry.name ?? entry.order.item_id, quantity: entry.sets_held ?? 0 }
+        : undefined
   return <article className={`docket-line${flagged ? ' doubt' : ''}`} aria-label={entry.name ?? entry.order.item_id}>
     {/* The claim is struck as a shape as well as a colour: a row is legible as flagged with the
         hue removed, which is what keeps the whole thing readable to anyone who cannot separate

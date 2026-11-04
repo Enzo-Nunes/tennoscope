@@ -28,7 +28,7 @@ vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: vi.fn(() => Promise.res
 
 import App from './App'
 import { resetUpdateStoreForTests } from './updateStore'
-import type { AppView } from './backend'
+import type { AppView, CollectionItem } from './backend'
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void
   let reject!: (reason?: unknown) => void
@@ -117,6 +117,33 @@ const view: AppView = {
       { stage: 'authorization_scan', state: 'ready', message: 'Authorization discovered' },
       { stage: 'inventory_fetch', state: 'ready', message: 'Inventory fetched' },
       { stage: 'schema_validation', state: 'failed', message: 'Inventory snapshot was invalid' },
+    ],
+  },
+}
+
+const redirection: CollectionItem = { id: 'redirection', name: 'Redirection', category: 'mod', quantity: 175, mastered: false, equipped: 1, platinum: 4, live: false, priceable: true }
+const vitality: CollectionItem = { id: 'vitality', name: 'Vitality', category: 'mod', quantity: 2, mastered: false, equipped: 0, platinum: 6, live: false, priceable: true }
+const vigor: CollectionItem = { id: 'vigor', name: 'Vigor', category: 'mod', quantity: 2, mastered: false, equipped: 2, platinum: 5, live: false, priceable: true }
+const serration10: CollectionItem = { id: 'serration#10', name: 'Serration', category: 'mod', quantity: 1, mastered: false, equipped: 1, rank: 10, max_rank: 10, platinum: 48, live: false, priceable: true }
+// Sixty-four rows, so a narrowed result still spans two pages: a filter that forgot to return to
+// page one would leave page two on screen.
+const equipView: AppView = {
+  ...view,
+  collection: {
+    ...view.collection,
+    total_entries: 64,
+    items: [
+      ...Array.from({ length: 60 }, (_, index): CollectionItem => ({
+        id: `mod-${index.toString().padStart(2, '0')}`,
+        name: `Mod ${index.toString().padStart(2, '0')}`,
+        category: 'mod',
+        quantity: 2,
+        mastered: false,
+        equipped: index === 0 ? 1 : 0,
+        live: false,
+        priceable: true,
+      })),
+      redirection, vitality, vigor, serration10,
     ],
   },
 }
@@ -392,10 +419,7 @@ describe('MVP desktop interface', () => {
     backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'companion', desktop_capture_action_available: false })
     render(<App />)
     // Prices come from the dump and explicit checks, not the game: no ownership to verify.
-    const priceButton = await screen.findByRole('button', { name: /Price these/ })
-    expect(priceButton).toBeEnabled()
-    await userEvent.click(priceButton)
-    expect(backend.refreshPrices).toHaveBeenCalledOnce()
+    await waitFor(() => expect(backend.refreshPrices).toHaveBeenCalledOnce(), { timeout: 3000 })
     expect(screen.getByRole('button', { name: 'Refresh inventory' })).toBeDisabled()
   })
 
@@ -453,6 +477,29 @@ describe('MVP desktop interface', () => {
     expect(screen.getByRole('article', { name: 'Rhino' })).toHaveTextContent('Mastered')
   })
 
+  // A part is never mastered itself, so the Mastered filter would never show one. It counts once
+  // the item it builds is mastered, and the card says which kind of mastered it is.
+  it('lists a part of a mastered item under the Mastered filter', async () => {
+    backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
+    backend.getView.mockResolvedValue({
+      ...view,
+      collection: {
+        total_entries: 3,
+        items: [
+          { id: 'rhino', name: 'Rhino Prime', category: 'frame', quantity: 1, mastered: true, live: false, priceable: false },
+          { id: 'rhino-systems', name: 'Rhino Prime Systems', category: 'prime_part', quantity: 1, mastered: false, item_mastered: true, live: false, priceable: true },
+          { id: 'ember-systems', name: 'Ember Prime Systems', category: 'prime_part', quantity: 1, mastered: false, live: false, priceable: true },
+        ],
+      },
+    })
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Your collection' })
+    await userEvent.click(within(screen.getByRole('group', { name: 'Ownership filters' })).getByRole('button', { name: 'Mastered' }))
+    expect(screen.getByRole('article', { name: 'Rhino Prime' })).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'Rhino Prime Systems' })).toHaveTextContent('Item mastered')
+    expect(screen.queryByRole('article', { name: 'Ember Prime Systems' })).not.toBeInTheDocument()
+  })
+
   // Three copies of a mod at three ranks are three holdings at three prices. The cards must be
   // tellable apart by name alone, and the one nobody quotes must read as bracketed rather than
   // borrow either end.
@@ -496,6 +543,26 @@ describe('MVP desktop interface', () => {
     expect(screen.getByRole('article', { name: 'Forma Blueprint' })).toHaveTextContent('Missing')
   })
 
+  it('keeps the search, filters and sort when leaving the collection and coming back', async () => {
+    backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Your collection' })
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search collection' }), 'prime')
+    await userEvent.click(screen.getByRole('button', { name: 'Prime Parts' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Owned' }))
+    await userEvent.click(within(screen.getByRole('group', { name: 'Sort collection' })).getByRole('button', { name: 'Quantity' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Mastery' }))
+    await screen.findByRole('heading', { name: 'Mastery' })
+    await userEvent.click(screen.getByRole('button', { name: 'Collection' }))
+    await screen.findByRole('heading', { name: 'Your collection' })
+
+    expect(screen.getByRole('searchbox', { name: 'Search collection' })).toHaveValue('prime')
+    expect(screen.getByRole('button', { name: 'Prime Parts' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Owned' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(screen.getByRole('group', { name: 'Sort collection' })).getByRole('button', { name: 'Quantity' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('supports every stable category and sortable collection results', async () => {
     backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
     render(<App />)
@@ -532,6 +599,84 @@ describe('MVP desktop interface', () => {
     expect(screen.queryByRole('searchbox', { name: 'Search collection' })).not.toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'Sort collection' })).not.toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'Item categories' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Copy filters' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Minimum price' })).not.toBeInTheDocument()
+  })
+
+  it('combinable copy filters narrow the collection and return to page one', async () => {
+    backend.getView.mockResolvedValue(equipView)
+    const user = userEvent.setup()
+    render(<App/>)
+    await user.click(await screen.findByRole('button', { name: 'Go to page 2' }))
+    expect(screen.getByText('49–64 of 64')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '2+ copies' }))
+    expect(screen.getByText('1–48 of 63'), 'the single ranked Serration is not a spare').toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Go to page 2' }))
+    expect(screen.getByText('49–63 of 63')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Unequipped' }))
+    expect(screen.getByText('1–48 of 62'), 'both Vigor copies are in use').toBeInTheDocument()
+
+    expect(screen.getByRole('button', { name: '2+ copies' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Unequipped' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  // A snapshot stored before the app counted installed copies says nothing about them. A toggle
+  // reading that count would pass every row or none, so it is absent until the count exists.
+  it('hides the unequipped filter until the snapshot knows what is equipped', async () => {
+    render(<App/>)
+    const copies = await screen.findByRole('group', { name: 'Copy filters' })
+    expect(within(copies).getByRole('button', { name: '2+ copies' })).toBeInTheDocument()
+    expect(within(copies).queryByRole('button', { name: 'Unequipped' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Equipped ×/)).not.toBeInTheDocument()
+  })
+
+  it('marks equipped copies on the card', async () => {
+    backend.getView.mockResolvedValue({ ...view, collection: { ...view.collection, items: [...view.collection.items, redirection, vitality] } })
+    render(<App/>)
+    expect(within(await screen.findByRole('article', { name: 'Redirection' })).getByText('Equipped ×1')).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'Vitality' }), 'none in use is no mark').not.toHaveTextContent('Equipped')
+    expect(screen.getByRole('article', { name: 'Braton' }), 'gear is never counted').not.toHaveTextContent('Equipped')
+  })
+
+  // The copy count is on the card only under Full, so a filter on it below Full would act on a
+  // number nobody can see. Rank and price are on every card, so their filters stay.
+  it('drops the copy filters and their marks when access falls below Full, and keeps the rest', async () => {
+    vi.useFakeTimers()
+    backend.getSetupStatus
+      .mockResolvedValueOnce({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
+      .mockResolvedValueOnce({ setup_complete: true, access_mode: 'companion', desktop_capture_action_available: false })
+    backend.getView.mockResolvedValue(equipView)
+    render(<App/>)
+    await act(async () => {})
+    expect(screen.getByRole('article', { name: 'Mod 00' })).toHaveTextContent('Equipped ×1')
+    fireEvent.click(screen.getByRole('button', { name: '2+ copies' }))
+    expect(screen.getByText('1–48 of 63')).toBeInTheDocument()
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500) })
+
+    expect(screen.queryByRole('button', { name: '2+ copies' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Unequipped' })).not.toBeInTheDocument()
+    expect(screen.getByText('1–48 of 64'), 'a hidden toggle no longer filters').toBeInTheDocument()
+    expect(screen.queryByText(/Equipped ×/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Unranked' }))
+    expect(screen.getByText('1–48 of 63')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Minimum price' })).toBeInTheDocument()
+  })
+
+  // Each step contains the ones above it, so two pressed at once could only mean the higher.
+  it('minimum price is one choice at a time and drops unpriced items', async () => {
+    const user = userEvent.setup()
+    render(<App/>)
+    await user.click(await screen.findByRole('button', { name: 'platinum 5+' }))
+    const steps = within(screen.getByRole('group', { name: 'Minimum price' })).getAllByRole('button')
+    expect(steps.filter(step => step.getAttribute('aria-pressed') === 'true').map(step => step.textContent)).toEqual(['5+'])
+    expect(screen.queryByRole('article', { name: 'Argon Crystal' }), 'an unpriced row').not.toBeInTheDocument()
+    expect(screen.queryByRole('article', { name: 'Zenith Prime Receiver' }), 'priced at 0').not.toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'Lex Prime Receiver' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Any' }))
+    expect(screen.getByRole('article', { name: 'Argon Crystal' })).toBeInTheDocument()
   })
 
   it('shows all diagnostics and acquisition stages without credential labels', async () => {
@@ -867,9 +1012,42 @@ describe('MVP desktop interface', () => {
     backend.refreshPrices.mockImplementationOnce(() => new Promise(() => {}))
     render(<App />)
     await act(async () => {})
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Price these/ })) })
+    // The page starts its own pass after a moment in view, and that pass never resolves here.
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500) })
+    expect(backend.refreshPrices).toHaveBeenCalledOnce()
     await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
     expect(backend.getView).toHaveBeenCalledTimes(3)
+  })
+
+  // The page prices itself once the player rests on it, asking only about what still shows a dump
+  // price. Lith A1 is already checked live, and the unowned and unresolvable rows are never sent.
+  it('prices the visible page live on its own once it has been in view for a moment', async () => {
+    vi.useFakeTimers()
+    backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
+    backend.getView.mockResolvedValue(view)
+    render(<App />)
+    await act(async () => {})
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(backend.refreshPrices).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+    expect(backend.refreshPrices).toHaveBeenCalledOnce()
+    const requested = backend.refreshPrices.mock.calls[0][0]
+    expect(requested).toEqual(expect.arrayContaining(['rhino', 'lex-prime-receiver', 'zenith-prime-receiver']))
+    expect(requested).not.toContain('lith-a1')
+    expect(requested).not.toContain('forma-blueprint')
+    expect(requested).not.toContain('bad-baby')
+  })
+
+  // Whatever comes back unpriced (nobody selling, the market down) still reads as unchecked, so
+  // the same page must not be sent again on every poll.
+  it('asks about the same unchecked page only once', async () => {
+    vi.useFakeTimers()
+    backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
+    backend.getView.mockResolvedValue(view)
+    render(<App />)
+    await act(async () => {})
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
+    expect(backend.refreshPrices).toHaveBeenCalledOnce()
   })
 
   // The readout belongs to the backend, which is the only party that knows a pass's total.
@@ -881,14 +1059,16 @@ describe('MVP desktop interface', () => {
     expect(await screen.findByText(/Checking live prices · 12 of 65/)).toBeInTheDocument()
   })
 
-  // Every pass comes out of one three-requests-a-second budget, so letting a click overlap one
-  // already running only makes each slower and leaves the one readout describing two queues.
-  it('refuses a page refresh while a background pass is already spending requests', async () => {
+  // Every pass comes out of one three-requests-a-second budget, so starting a second one beside a
+  // pass already running only makes each slower and leaves the one readout describing two queues.
+  it('starts no pass of its own while another is already spending requests', async () => {
+    vi.useFakeTimers()
     backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
     backend.getView.mockResolvedValue({ ...view, collection: { ...view.collection, pricing: { done: 3, total: 65 } } })
     render(<App/>)
-
-    expect(await screen.findByRole('button', { name: /Pricing/ })).toBeDisabled()
+    await act(async () => {})
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+    expect(backend.refreshPrices).not.toHaveBeenCalled()
   })
 
   it('stops scheduled polling after unmount', async () => {
@@ -1130,6 +1310,42 @@ describe('MVP desktop interface', () => {
     ])
   })
 
+  // What to hand Baro first is what gives up the least platinum per ducat. A part with ducats but
+  // no price follows the ranked ones (its ratio is unknown, not poor), and equal ratios put the
+  // bigger payout first.
+  it('sorts by ducats per platinum while the values are shown', async () => {
+    backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
+    backend.getView.mockResolvedValue({
+      ...view,
+      collection: {
+        ...view.collection,
+        total_entries: 6,
+        items: [
+          { id: 'braton', name: 'Braton', category: 'weapon', quantity: 1, mastered: false, live: false, priceable: true, platinum: 20 },
+          { id: 'lex-prime-receiver', name: 'Lex Prime Receiver', category: 'prime_part', quantity: 1, mastered: false, live: false, priceable: true, ducats: 15, platinum: 3 },
+          { id: 'paris-prime-string', name: 'Paris Prime String', category: 'prime_part', quantity: 2, mastered: false, live: false, priceable: true, ducats: 45, platinum: 9 },
+          { id: 'ash-prime-systems', name: 'Ash Prime Systems', category: 'prime_part', quantity: 1, mastered: false, live: false, priceable: true, ducats: 100, platinum: 40 },
+          { id: 'nami-prime-blade', name: 'Nami Prime Blade', category: 'prime_part', quantity: 1, mastered: false, live: false, priceable: true, ducats: 100, platinum: 8 },
+          { id: 'kogake-prime-gauntlet', name: 'Kogake Prime Gauntlet', category: 'prime_part', quantity: 1, mastered: false, live: false, priceable: true, ducats: 45 },
+        ],
+      },
+    })
+    const user = userEvent.setup()
+    render(<App/>)
+    await screen.findByRole('heading', { name: 'Your collection' })
+    await user.click(screen.getByRole('button', { name: 'Ducats per plat' }))
+
+    const names = screen.getAllByRole('article').map(article => article.getAttribute('aria-label'))
+    expect(names).toEqual([
+      'Nami Prime Blade',       // 100 / 8 = 12.5
+      'Paris Prime String',     // 45 / 9 = 5, ties with the next and pays more
+      'Lex Prime Receiver',     // 15 / 3 = 5
+      'Ash Prime Systems',      // 100 / 40 = 2.5
+      'Kogake Prime Gauntlet',  // ducats but no price yet
+      'Braton',                 // no ducats
+    ])
+  })
+
   // A sort over numbers the screen is not showing would reorder the register invisibly, so the
   // ducat sort belongs to the layer the switch governs. Off, the chip retires with the badges,
   // and the pressed chip moves to platinum in plain sight rather than silently.
@@ -1144,6 +1360,7 @@ describe('MVP desktop interface', () => {
     await user.click(screen.getByRole('switch', { name: 'Ducat values' }))
 
     expect(screen.queryByRole('button', { name: 'Ducats' }), 'no sorting by an invisible reading').not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Ducats per plat' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Platinum' })).toHaveAttribute('aria-pressed', 'true')
   })
 
@@ -1172,24 +1389,21 @@ describe('MVP desktop interface', () => {
     expect(within(daily).queryByText(/checked/i)).not.toBeInTheDocument()
   })
 
-  // Someone who clicks it should not have to guess whether it prices the page or the collection,
-  // or find that two of the items it counted were never going to be asked about. The fixture's
-  // visible page carries eight owned items; the quantity-0 Forma Blueprint and the unresolvable
-  // Bad Baby are both left out, leaving seven the backend will actually send.
-  it('names how many items the refresh will price, and counts only ones it can price', async () => {
+  // How often warframe.market is asked is the program's decision, not the player's.
+  it('offers no manual control for live pricing', async () => {
     backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
     render(<App/>)
-    expect(await screen.findByRole('button', { name: /Price these 7/ })).toBeInTheDocument()
+    await screen.findByRole('heading', { name: 'Your collection' })
+    expect(screen.queryByRole('button', { name: /Price these/ })).not.toBeInTheDocument()
   })
 
   // A relic no dump in the last month saw trade is unpriced, and an unpriced item is precisely
-  // the one a manual refresh exists for. Sending only already-priced items would close the recovery
+  // the one live pricing exists for. Sending only already-priced items would close the recovery
   // path against the items that need it.
-  it('offers to price an owned item that has no price yet, and never an unowned one', async () => {
+  it('prices an owned item that has no price yet, and never an unowned one', async () => {
     backend.getSetupStatus.mockResolvedValue({ setup_complete: true, access_mode: 'full', desktop_capture_action_available: false })
-    const user = userEvent.setup()
     render(<App/>)
-    await user.click(await screen.findByRole('button', { name: /Price these/ }))
+    await waitFor(() => expect(backend.refreshPrices).toHaveBeenCalled(), { timeout: 3000 })
 
     const requested = backend.refreshPrices.mock.calls[0][0]
     expect(requested).toContain('rhino')             // owned, no price yet
@@ -1289,10 +1503,10 @@ describe('MVP desktop interface', () => {
     render(<App/>)
     await user.click(await screen.findByRole('button', { name: 'Tradeable' }))
     await user.click(await screen.findByRole('button', { name: 'Go to page 2' }))
-    await user.click(screen.getByRole('button', { name: /Price these/ }))
 
     // Page 2 of 53 tradeable items (50 filler + 3 named) holds only the last 5, alphabetically.
-    expect(backend.refreshPrices).toHaveBeenCalledWith(['filler-48', 'filler-49', 'lex-prime-receiver', 'lith-a1', 'zenith-prime-receiver'])
+    // Lith A1 is already checked live, so it is not asked about again.
+    await waitFor(() => expect(backend.refreshPrices).toHaveBeenCalledWith(['filler-48', 'filler-49', 'lex-prime-receiver', 'zenith-prime-receiver']), { timeout: 3000 })
   })
 
   it('routes to the Orders section and counts flagged listings on the nav entry', async () => {

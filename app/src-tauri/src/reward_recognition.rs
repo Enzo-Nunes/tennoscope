@@ -34,8 +34,8 @@ use crate::{
     reward_source::{CardCandidates, VisualRewardSource},
 };
 
-/// Public timing, matching the existing rates: two-second search cadence, 400ms watch
-/// cadence after the cards are found, 45-minute watch lifetime, and 200ms/8s
+/// Public timing, matching the existing rates: two-second search cadence while the reward
+/// screen is open, 400ms watch cadence after the cards are found, 45-minute watch lifetime, and 200ms/8s
 /// log-triggered fast retries (off-thread).
 #[derive(Clone, Copy, Debug)]
 pub struct RecognitionTiming {
@@ -198,6 +198,7 @@ where
             wake,
             stop: AtomicBool::new(false),
             paused: AtomicBool::new(false),
+            screen_open: AtomicBool::new(false),
             make_source: Box::new(move || Box::new(make_source()) as Box<dyn VisualRewardSource>),
             retry_epoch: AtomicU64::new(0),
         });
@@ -234,6 +235,7 @@ where
                     expected_choices: Some(*expected_choices),
                     local_reward: self.local_reward_name(local_reward_path),
                 };
+                self.mark_screen_open();
                 self.set_constraint(Some(context));
             }
             RewardLogEvent::ResponsesComplete {
@@ -245,13 +247,26 @@ where
                     expected_choices: Some(screen_order.len()),
                     local_reward: self.local_reward_name(local_reward_path),
                 };
+                self.mark_screen_open();
                 self.set_constraint(Some(context));
             }
             RewardLogEvent::Closed => self.close(),
-            RewardLogEvent::RewardWindowOpened
-            | RewardLogEvent::ResponderExpected { .. }
-            | RewardLogEvent::ResponderReceived { .. } => {}
+            RewardLogEvent::RewardWindowOpened => {
+                log::info!("reward: screen opened (log)");
+                self.mark_screen_open();
+                // The cards paint about five seconds after the open line, so the fast retry
+                // window armed here is what finds them.
+                self.shared.retry_epoch.fetch_add(1, Ordering::AcqRel);
+                self.wake_worker();
+            }
+            RewardLogEvent::ResponderExpected { .. } | RewardLogEvent::ResponderReceived { .. } => {
+            }
         }
+    }
+
+    /// Let the worker capture: the log says a reward screen is up. See [`Shared::screen_open`].
+    fn mark_screen_open(&self) {
+        self.shared.screen_open.store(true, Ordering::Release);
     }
 
     /// Replace the candidate pool with the one this baseline's relics resolve to, and
@@ -323,6 +338,7 @@ where
         let shared = &self.shared;
         self.suspended = false;
         shared.paused.store(false, Ordering::Release);
+        shared.screen_open.store(false, Ordering::Release);
         // Retire the epoch. In-flight captures see the new epoch and refuse to deliver.
         // At cold start (epoch 0) there is no session to retire: bumping would arm a
         // watch deadline the worker could expire before the first baseline opens.
@@ -359,6 +375,7 @@ where
         }
         self.suspended = true;
         let shared = &self.shared;
+        shared.screen_open.store(false, Ordering::Release);
         let old_epoch = shared.epoch.load(Ordering::Acquire);
         if old_epoch != 0 {
             // A session is open. Carry an already-published screen across the pause so its
@@ -536,6 +553,15 @@ struct Shared {
     /// Set while the game process is absent; the worker drops its source and waits without
     /// capturing until `resume` clears it. The pool is preserved across the pause.
     paused: AtomicBool,
+    /// Set from the log's `OpenVoidProjectionRewardScreen` (or the constraint events that follow
+    /// it) and cleared by `close`/`suspend`; the worker captures only while it is set. Polling
+    /// from relic load instead kept OCR running every two seconds for a whole endless mission.
+    /// The log is late but not too late for this: on 2026-10-29 `Got rewards` came 5.2-5.7s
+    /// after the open line, the screen shut down about 20.5s after it, and the monitor handled
+    /// log lines within about 1s of their timestamps. The worst flush measured, ~7.5s on
+    /// 2026-07-27, would still leave about 13s of cards on screen. The pool and its prices are
+    /// still prepared at baseline, minutes ahead.
+    screen_open: AtomicBool,
     /// Factory is `Send + Sync`; the source it produces is used only on the worker.
     make_source: Box<dyn Fn() -> Box<dyn VisualRewardSource> + Send + Sync>,
     /// Bumped whenever the monitor arms a new pool or asserts new constraints; the worker
@@ -757,12 +783,16 @@ fn worker_loop(shared: Arc<Shared>) {
             continue;
         }
 
-        // The retry window re-arms when the monitor touches pool/constraints.
+        // The retry window re-arms when the monitor touches pool/constraints/open, but only
+        // while the cards are still unfound: it exists to find them, and re-arming it over a
+        // screen already read would only hold back the miss reports that take it down.
         let retry_now = shared.retry_epoch.load(Ordering::Acquire);
         if retry_now != fast_epoch {
             fast_epoch = retry_now;
-            fast_deadline = Some(Instant::now() + shared.timing.retry_deadline);
-            fast_reported = false;
+            if !found {
+                fast_deadline = Some(Instant::now() + shared.timing.retry_deadline);
+                fast_reported = false;
+            }
         }
 
         if let Some(deadline) = session_deadline
@@ -797,6 +827,12 @@ fn worker_loop(shared: Arc<Shared>) {
         if !readable {
             // Nothing to match against. Do not capture; the next baseline wakes the worker.
             let _ = wait_for_wake(&shared, Some(shared.timing.interval));
+            continue;
+        }
+
+        if !shared.screen_open.load(Ordering::Acquire) {
+            // Armed but no screen yet: hold still until the log's open line wakes the worker.
+            wait_for_wake(&shared, None);
             continue;
         }
 
@@ -847,7 +883,9 @@ fn worker_loop(shared: Arc<Shared>) {
             let mut slot = lock(&shared.delivery);
             // A pending Recognized read is the valuable signal: failures or Gone arriving before
             // the monitor drains it must not overwrite it. The monitor publishes on drain, and a
-            // later Gone (or the log's Closed line) still hides the overlay.
+            // later Gone (or the log's Closed line) still hides the overlay. A pending Gone is the
+            // same: the worker keeps reading after it, and a failure landing before the monitor's
+            // next poll would otherwise swallow the hide and leave the overlay up.
             if matches!(kind, DeliveryKind::Recognized { .. }) {
                 *slot = Some(Delivery {
                     epoch: capture_epoch,
@@ -856,9 +894,12 @@ fn worker_loop(shared: Arc<Shared>) {
                 });
                 return;
             }
-            let overwrite = slot
-                .as_ref()
-                .is_none_or(|pending| !matches!(pending.kind, DeliveryKind::Recognized { .. }));
+            let overwrite = slot.as_ref().is_none_or(|pending| {
+                !matches!(
+                    pending.kind,
+                    DeliveryKind::Recognized { .. } | DeliveryKind::Gone
+                )
+            });
             if overwrite {
                 *slot = Some(Delivery {
                     epoch: capture_epoch,
@@ -870,7 +911,7 @@ fn worker_loop(shared: Arc<Shared>) {
 
         // Returns true when this attempt recognized cards.
         let recognized = match outcome {
-            Some(Ok(read)) if read.len() >= 2 => {
+            Some(Ok(read)) if !read.is_empty() => {
                 let cards = read
                     .into_iter()
                     .map(|(name, confidence)| RewardObservation { name, confidence })

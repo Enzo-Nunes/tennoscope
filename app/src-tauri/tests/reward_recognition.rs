@@ -148,6 +148,11 @@ fn baseline(paths: &[&str]) -> RewardLogEvent {
     }
 }
 
+/// The log's open line: the reader captures only after it (or a constraint) arrives.
+fn opened() -> RewardLogEvent {
+    RewardLogEvent::RewardWindowOpened
+}
+
 fn choices_ready(expected: usize, local: Option<&str>) -> RewardLogEvent {
     RewardLogEvent::ChoicesReady {
         expected_choices: expected,
@@ -438,6 +443,7 @@ fn a_read_of_two_three_or_four_cards_publishes_without_log_constraints() {
         let coordination = coordination(vec![frame]);
         let mut recognition = recognition(&coordination);
         recognition.observe(&baseline(&[EARLY_RELIC]));
+        recognition.observe(&opened());
         let update = drain_recognized(&mut recognition);
         assert_eq!(card_names(&update), expected);
         assert!(
@@ -461,6 +467,7 @@ fn a_blank_first_read_retries_until_the_cards_are_painted() {
     ]);
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     let update = drain_recognized(&mut recognition);
     assert_eq!(
         card_names(&update),
@@ -489,9 +496,11 @@ fn duplicate_baselines_reuse_the_single_capture_source() {
 
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     wait_for_capture(&coordination, 1);
     // A second `BaselineRequested` with the same relics arrives mid-capture.
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     guard.release();
     // The single source finishes its read; shutdown joins it.
     recognition.shutdown();
@@ -500,6 +509,74 @@ fn duplicate_baselines_reuse_the_single_capture_source() {
         1,
         "duplicate baselines must not create a second capture source"
     );
+}
+
+/// A baseline prepares the pool minutes before the screen, and an endless mission spends
+/// those minutes in combat, so nothing captures until the log says the screen opened. A
+/// close ends capture again, and the next round's baseline stays idle until its own open.
+#[test]
+fn the_reader_captures_only_between_the_open_line_and_the_close() {
+    let coordination = coordination(vec![Frame::Names(names(&[
+        entry("Perigale Prime Receiver"),
+        entry("Vasto Prime Stock"),
+    ]))]);
+    let mut recognition = recognition(&coordination);
+    recognition.observe(&RewardLogEvent::BaselineRequested {
+        relic_paths: vec![EARLY_RELIC.to_owned()],
+    });
+    assert_eq!(
+        recognition.pool_entries().len(),
+        2,
+        "the pool is ready ahead"
+    );
+    std::thread::sleep(Duration::from_millis(120)); // several cadence and retry intervals
+    assert_eq!(
+        coordination.captures.load(Ordering::Acquire),
+        0,
+        "an armed pool with no screen open must not capture"
+    );
+
+    recognition.observe(&opened());
+    let update = drain_recognized(&mut recognition);
+    assert_eq!(
+        card_names(&update),
+        names(&[entry("Perigale Prime Receiver"), entry("Vasto Prime Stock")])
+    );
+
+    recognition.observe(&RewardLogEvent::Closed);
+    recognition.observe(&RewardLogEvent::BaselineRequested {
+        relic_paths: vec![LATER_RELIC.to_owned()],
+    });
+    std::thread::sleep(Duration::from_millis(60)); // let an in-flight capture finish
+    let settled = coordination.captures.load(Ordering::Acquire);
+    std::thread::sleep(Duration::from_millis(120));
+    assert_eq!(
+        coordination.captures.load(Ordering::Acquire),
+        settled,
+        "the next round's baseline must wait for its own open line"
+    );
+    recognition.shutdown();
+}
+
+/// The constraint events follow the open line, so either one opens the screen on its own if
+/// the open line was missed.
+#[test]
+fn choices_ready_alone_opens_the_screen() {
+    let coordination = coordination(vec![Frame::Names(names(&[
+        entry("Perigale Prime Receiver"),
+        entry("Vasto Prime Stock"),
+    ]))]);
+    let mut recognition = recognition(&coordination);
+    recognition.observe(&RewardLogEvent::BaselineRequested {
+        relic_paths: vec![EARLY_RELIC.to_owned()],
+    });
+    recognition.observe(&choices_ready(2, None));
+    let update = drain_recognized(&mut recognition);
+    assert_eq!(
+        card_names(&update),
+        names(&[entry("Perigale Prime Receiver"), entry("Vasto Prime Stock")])
+    );
+    recognition.shutdown();
 }
 
 /// A baseline that names no relics leaves nothing to match against, so
@@ -512,6 +589,7 @@ fn a_baseline_naming_no_relics_does_not_capture_until_one_does() {
     ]))]);
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[]));
+    recognition.observe(&opened());
     assert!(
         coordination.captures.load(Ordering::Acquire) == 0,
         "a baseline naming no relics must not capture"
@@ -527,6 +605,7 @@ fn a_baseline_naming_no_relics_does_not_capture_until_one_does() {
     );
 
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     let update = drain_recognized(&mut recognition);
     assert_eq!(
         card_names(&update),
@@ -547,6 +626,7 @@ fn a_baseline_whose_relics_have_no_known_rewards_still_publishes_a_read() {
     ]))]);
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[REWARDLESS_RELIC]));
+    recognition.observe(&opened());
     assert!(
         recognition.pool_entries().is_empty(),
         "the relic's rewards are unknown, so the pool stays empty"
@@ -595,6 +675,7 @@ fn a_forma_card_is_named_when_no_relic_of_the_squad_resolved() {
             }
         });
     recognition.observe(&baseline(&[REWARDLESS_RELIC]));
+    recognition.observe(&opened());
     let update = drain_recognized(&mut recognition);
     assert_eq!(
         card_names(&update),
@@ -614,6 +695,7 @@ fn a_published_read_keeps_the_score_each_card_was_read_at() {
     ])]);
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     let update = drain_recognized(&mut recognition);
     assert_eq!(
         update.cards,
@@ -642,6 +724,7 @@ fn a_relic_that_loads_after_the_baseline_still_grows_the_pool() {
     ]))]);
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     let first = drain_recognized(&mut recognition);
     assert_eq!(
         card_names(&first),
@@ -651,6 +734,7 @@ fn a_relic_that_loads_after_the_baseline_still_grows_the_pool() {
     // The third squad member's relic finishes loading after the reader is
     // already running; the pool the running reader matches against must grow.
     recognition.observe(&baseline(&[EARLY_RELIC, GROWN_RELIC]));
+    recognition.observe(&opened());
     let mut grown = names(&recognition.pool_entries());
     grown.sort();
     let mut expected = names(&[
@@ -678,11 +762,13 @@ fn a_later_fissure_replaces_an_earlier_larger_pool() {
     ]))]);
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     let _ = drain_recognized(&mut recognition);
 
     // The later fissure's single relic resolves to two names; the earlier one
     // resolved to three. The later, smaller pool must replace the larger one.
     recognition.observe(&baseline(&[LATER_RELIC]));
+    recognition.observe(&opened());
     assert_eq!(
         names(&recognition.pool_entries()),
         names(&[
@@ -716,8 +802,10 @@ fn a_baseline_swap_mid_capture_never_publishes_the_stale_read() {
     let mut recognition = recognition(&coordination);
     // The later fissure opens while the earlier one's capture is still in flight.
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     wait_for_capture(&coordination, 1);
     recognition.observe(&baseline(&[LATER_RELIC]));
+    recognition.observe(&opened());
     guard_swap.release();
     // The worker is now wedged on the second gate: nothing else can happen
     // until released, so a stale publish can only arrive from the old screen.
@@ -756,6 +844,7 @@ fn known_constraints_reject_mismatched_reads() {
         let coordination = coordination(vec![first, second]);
         let mut recognition = recognition(&coordination);
         recognition.observe(&baseline(&[EARLY_RELIC]));
+        recognition.observe(&opened());
         recognition.observe(&choices_ready(
             2,
             Some("/Lotus/StoreItems/Types/Recipes/Weapons/PerigalePrimeReceiverComponent"),
@@ -805,6 +894,7 @@ fn first_read_published_after_the_logged_reward(
     let mut gate = GateGuard(Some(coordination.stack_gate()));
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[relic]));
+    recognition.observe(&opened());
     wait_for_capture(&coordination, 1);
     recognition.observe(&choices_ready(2, Some(local_path)));
     gate.release();
@@ -871,6 +961,7 @@ fn choices_ready_count_outranks_the_roster_size() {
     ]);
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     recognition.observe(&RewardLogEvent::ResponsesComplete {
         responders: vec![
             "de1e7ed00000000000000005".into(),
@@ -909,6 +1000,7 @@ fn close_is_prompt_while_a_capture_is_still_in_flight() {
 
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     wait_for_capture(&coordination, 1);
 
     let started = Instant::now();
@@ -933,11 +1025,13 @@ fn suspend_preserves_the_pool_across_a_transient_process_loss() {
     ]))]);
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     // A discovery blip while no screen is up: nothing captured yet, pool preserved.
     recognition.suspend();
     recognition.suspend(); // idempotent: repeated absence ticks do no further work
     assert_eq!(recognition.pool_entries().len(), 2);
     recognition.resume();
+    recognition.observe(&opened());
     let update = drain_recognized(&mut recognition);
     assert_eq!(
         card_names(&update),
@@ -964,6 +1058,7 @@ fn suspend_at_cold_start_does_not_suppress_the_first_screen() {
     recognition.resume();
     // The first fissure's baseline opens epoch 1 for the first time.
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     let update = drain_recognized(&mut recognition);
     assert_eq!(
         card_names(&update),
@@ -985,6 +1080,7 @@ fn close_discards_an_undelivered_reward_read() {
 
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     wait_for_capture(&coordination, 1);
     // The screen closes while the capture is still in flight.
     recognition.close();
@@ -1010,6 +1106,7 @@ fn two_misses_close_the_screen_without_a_one_blank_flicker() {
     let mut second_miss = GateGuard(Some(coordination.stack_gate()));
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     let update = drain_recognized(&mut recognition);
     assert_eq!(
         card_names(&update),
@@ -1062,6 +1159,7 @@ fn shutdown_joins_the_in_flight_capture_destruction() {
 
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     wait_for_capture(&coordination, 1);
 
     let (shutdown_started_tx, shutdown_started_rx) = mpsc::channel();
@@ -1108,6 +1206,7 @@ fn publication_gate_accepts_the_current_token_and_declines_retired_duplicates() 
     ]);
     let mut recognition = recognition(&coordination);
     recognition.observe(&baseline(&[EARLY_RELIC]));
+    recognition.observe(&opened());
     let current = drain_recognized(&mut recognition);
 
     let first_effect = Arc::new(AtomicUsize::new(0));
@@ -1134,6 +1233,7 @@ fn publication_gate_accepts_the_current_token_and_declines_retired_duplicates() 
     // token: its effect must decline even though the caller still holds it.
     recognition.close();
     recognition.observe(&baseline(&[LATER_RELIC]));
+    recognition.observe(&opened());
     let next = drain_recognized(&mut recognition);
     let retired_effect = Arc::new(AtomicUsize::new(0));
     assert!(
@@ -1167,6 +1267,7 @@ fn a_recognized_read_logs_its_pool_provenance() {
     let mut recognition = recognition(&coordination);
     let provenance = capture_log(|| {
         recognition.observe(&baseline(&[EARLY_RELIC]));
+        recognition.observe(&opened());
         let _ = drain_recognized(&mut recognition);
         names(&recognition.pool_entries());
     });

@@ -41,26 +41,14 @@ right now, without taking focus from the game.
 
 <div align="center">
 
-## Ducat Kiosk overlay
-
-</div>
-
-Before you trade a Prime part for ducats, check what it is worth in platinum. TennoScope
-puts a platinum figure on every tile of the grid, carries each pick into the sell list, and
-totals the sell list as it fills. With Full access, tiles for parts of items you have not
-mastered, built or started building read Unmastered beside the price.
-
-![The Ducat Kiosk overlay, with a platinum figure or an Unmastered strip on every Prime part tile, the picked items and their values in a sell list on the right, and a running total at the bottom](docs/screenshots/ducat-kiosk.png)
-
-<div align="center">
-
 ## Collection
 
 </div>
 
 Open one screen for gear, Prime parts, relics, resources, blueprints, mods and arcanes.
-Search by name, or filter to owned, mastered or missing gear. Full mode synchronizes when
-the game starts; Companion and Overlay keep the last collection visible as a timestamped
+Search by name, or filter to owned, mastered or missing gear, to rows you hold more than
+one copy of, to unequipped or unranked copies, or to a minimum price. Full mode synchronizes
+when the game starts; Companion and Overlay keep the last collection visible as a timestamped
 saved snapshot.
 
 ![The collection browser, with tracked, mastered and missing counts, a collection worth in platinum and ducats at stake across the top, and platinum and ducat values on every item card](docs/screenshots/collection.png)

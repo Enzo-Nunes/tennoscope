@@ -4,8 +4,7 @@
   "description": "enables the default permissions",
   "windows": [
     "main",
-    "reward-overlay",
-    "kiosk-overlay"
+    "reward-overlay"
   ],
   "permissions": [
     "process:allow-restart",

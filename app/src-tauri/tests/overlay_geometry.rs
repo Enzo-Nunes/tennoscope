@@ -1,7 +1,7 @@
 use app_lib::{MAX_CARDS, reward_overlay_geometry, warframe_window_from_xwininfo_tree};
 
 /// The overlay has to line up with the game's four reward cards, which on a 1920x1080 screen span
-/// x=478 to x=1444 and bottom out at y=525 under the player-name row; the strip starts 162px lower so
+/// x=478 to x=1444 and bottom out at y=525 under the player-name row; the strip starts 90px lower so
 /// it clears the names. It used to be sized at 75% of
 /// the screen and placed at 56% of the height, which made it 1440px wide against the cards' 966 and
 /// put it roughly 75px below them.
@@ -11,13 +11,13 @@ fn reward_overlay_sits_under_the_game_reward_cards() {
     assert_eq!((hd.x, hd.width), (478, 966), "must span the card block");
     assert_eq!(
         (hd.y, hd.height),
-        (692, 180),
+        (620, 180),
         "must sit just below the cards"
     );
 
     // Same screen, second monitor: the block is offset but keeps its size.
     let offset = reward_overlay_geometry(1920, 1080, 1920, 0, MAX_CARDS);
-    assert_eq!((offset.x, offset.y), (2398, 692));
+    assert_eq!((offset.x, offset.y), (2398, 620));
     assert_eq!((offset.width, offset.height), (966, 180));
 
     // Scaling is by height and centred, with no clamp to break the alignment. On a 21:9 screen a
@@ -26,13 +26,13 @@ fn reward_overlay_sits_under_the_game_reward_cards() {
     // background.
     let ultrawide = reward_overlay_geometry(3440, 1440, 1920, 0, MAX_CARDS);
     assert_eq!((ultrawide.x, ultrawide.width), (2997, 1288));
-    assert_eq!((ultrawide.y, ultrawide.height), (923, 240));
+    assert_eq!((ultrawide.y, ultrawide.height), (827, 240));
 
     // A Steam Deck's native 16:10. The cards are 966/1080 of the height wide, wherever the extra
     // 160px of a 16:9 window went.
     let deck = reward_overlay_geometry(1280, 800, 0, 0, MAX_CARDS);
     assert_eq!((deck.x, deck.width), (283, 716));
-    assert_eq!((deck.y, deck.height), (513, 133));
+    assert_eq!((deck.y, deck.height), (459, 133));
 }
 
 /// Warframe centres the card block on the number of cards, so a smaller squad's cards are both
@@ -84,7 +84,7 @@ xwininfo: Window id: 0x352 (the root window) (has no name)
         "must read the absolute position, not the parent-relative one"
     );
     let overlay = reward_overlay_geometry(rect.width, rect.height, rect.x, rect.y, MAX_CARDS);
-    assert_eq!((overlay.x, overlay.y), (2398, 692));
+    assert_eq!((overlay.x, overlay.y), (2398, 620));
 
     // A window left of the primary output reports a negative offset, which prints as `+-1920`.
     let left = r#"     0x1400003 "Warframe": ("Warframe" "warframe.x64.exe")  1920x1080+-1920+0  +-1920+0"#;

@@ -355,6 +355,47 @@ fn a_four_card_screen_is_not_mistaken_for_a_narrower_one() {
     );
 }
 
+/// Only one relic opened, so the game shows a single card, centred where a three-card screen's
+/// middle card sits. Built from the three-card fixture with everything either side of that card
+/// painted black, so the card being read is a real one. The four-, three- and two-card layouts all
+/// have to fail first, and the three-card left slot reading blank is what lets the lone card through.
+#[test]
+fn a_single_card_screen_is_read_as_one_card() {
+    common::isolate_debug_log();
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/reward-screen-three-cards.png");
+    let mut screen = image::open(&fixture)
+        .expect("the fixture decodes")
+        .to_rgba8();
+    let (width, height) = screen.dimensions();
+    let left = app_lib::card_block_left(1, width, height) as u32;
+    let right = left + app_lib::card_block_width(1, height) as u32;
+    for (x, _, pixel) in screen.enumerate_pixels_mut() {
+        if x < left || x >= right {
+            *pixel = image::Rgba([0, 0, 0, 255]);
+        }
+    }
+    let cards =
+        app_lib::read_cards_in(&image::DynamicImage::ImageRgba8(screen), pool_only(&pool()))
+            .expect("the lone card reads");
+    assert_eq!(names(cards), vec!["2X Forma Blueprint"]);
+}
+
+/// The three-card screen must keep reading as three now that one card is tried as well: its middle
+/// card sits exactly on the one-card position.
+#[test]
+fn a_three_card_screen_is_not_mistaken_for_a_single_card() {
+    common::isolate_debug_log();
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/reward-screen-three-cards.png");
+    assert_eq!(
+        app_lib::read_cards(&fixture, pool_only(&pool()))
+            .unwrap()
+            .len(),
+        3
+    );
+}
+
 /// Only the screen's middle two cards, as if the relics behind the outer two never resolved.
 fn gap_pool() -> Vec<RewardCatalogEntry> {
     pool()

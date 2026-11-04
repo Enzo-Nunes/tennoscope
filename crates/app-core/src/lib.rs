@@ -2,6 +2,7 @@
 
 mod fake_session;
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -10,12 +11,12 @@ use serde::Serialize;
 use thiserror::Error;
 use warframe_acquisition::{
     AcquisitionError, AcquisitionFailure, AcquisitionResult, AcquisitionStage, CatalogIndex,
-    CatalogLoadSource, DucatTable, Holdings, MarketPriceCache, MasteryEvidence, MasteryFacts,
-    MasteryLedger, PriceTable, StageState,
+    CatalogLoadSource, ComponentKind, DucatTable, Holdings, MarketPriceCache, MasteryEvidence,
+    MasteryFacts, MasteryLedger, PriceTable, StageState,
 };
 use warframe_domain::{
-    CatalogItem, Category, Collection, DomainError, InventoryEntry, InventorySnapshot,
-    KioskMastery, MasteryMark, RewardAdvisor, RewardCandidate, RewardView,
+    CatalogItem, Category, Collection, DomainError, InventoryEntry, InventorySnapshot, MasteryMark,
+    RewardAdvisor, RewardCandidate, RewardView,
 };
 use warframe_market::{CredentialBacking, MarketItems, MarketOrder, OrderKind};
 use warframe_status::Presence;
@@ -72,12 +73,6 @@ impl MasteryView {
     pub fn reward_mark(&self, reward_name: &str) -> Option<MasteryMark> {
         let catalog = self.catalog.as_deref()?;
         MasteryLedger::new(catalog, &self.holdings, self.facts.as_ref()).reward_mark(reward_name)
-    }
-
-    /// The strip a kiosk tile carries, or nothing without live facts or for mastered parts.
-    pub fn kiosk_mastery(&self, part_name: &str) -> Option<KioskMastery> {
-        let catalog = self.catalog.as_deref()?;
-        MasteryLedger::new(catalog, &self.holdings, self.facts.as_ref()).kiosk_mastery(part_name)
     }
 }
 
@@ -145,10 +140,15 @@ impl AppCore {
         })
     }
 
-    /// The Prime recipe index, once the catalogue has loaded. Held like the price table:
+    /// The recipe index, once the catalogue has loaded. Held like the price table:
     /// mastery marks join rewards against it on every overlay publish.
     pub fn set_mastery_catalog(&mut self, catalog: Arc<CatalogIndex>) {
         self.mastery_catalog = Some(catalog);
+    }
+
+    /// The recipe index, for judging set listings by the parts they stand for.
+    pub fn mastery_catalog(&self) -> Option<Arc<CatalogIndex>> {
+        self.mastery_catalog.clone()
     }
 
     /// This run's inventory facts: affinity per item and pending foundry builds. A
@@ -168,7 +168,7 @@ impl AppCore {
     }
 
     /// A snapshot of what mastery marks may say, taken once per overlay publish. The
-    /// collection loads once here so a reward and a kiosk tile never disagree mid-render.
+    /// collection loads once here so the cards on one screen never disagree mid-render.
     pub fn mastery_view(&self) -> Result<MasteryView, AppError> {
         let collection = self.store.load_collection()?;
         Ok(MasteryView {
@@ -281,6 +281,48 @@ impl AppCore {
         self.current_view()
     }
 
+    /// Judge the orders already held again, against the collection as it now stands.
+    ///
+    /// A fresh inventory read is new evidence about listings fetched before it, and an edit that
+    /// left its listing newer than the old read is answered by the new one. Waiting for the next
+    /// order fetch to say so left a row Unverifiable until the screen was left and reopened. No
+    /// request is made: the orders are the ones already held, and `items` is the table they were
+    /// fetched against. An account that is not linked has nothing to judge.
+    pub fn rejudge_market_orders(&mut self, items: &MarketItems) -> Result<AppView, AppError> {
+        if self.market_account.link != LinkState::Linked {
+            return self.current_view();
+        }
+        let collection = self.store.load_collection()?;
+        let snapshot = self.store.latest_snapshot_meta()?;
+        let orders = self
+            .market_account
+            .orders
+            .iter()
+            .map(|entry| entry.order.clone())
+            .collect::<Vec<_>>();
+        let reconciled = reconcile_orders(
+            &orders,
+            items,
+            &collection,
+            snapshot.as_ref(),
+            self.mastery_catalog.as_deref(),
+        );
+        let held = &self.market_account;
+        let rejudged = MarketAccountView::linked(
+            held.backing.unwrap_or(CredentialBacking::Database),
+            reconciled,
+            held.fetched_at.clone().unwrap_or_default(),
+        )
+        .with_listable(items, &collection);
+        self.market_account = MarketAccountView {
+            backing: held.backing,
+            fetched_at: held.fetched_at.clone(),
+            presence: held.presence,
+            ..rejudged
+        };
+        self.current_view()
+    }
+
     /// A fetch failed. The orders already held stay: the list is still true as of when it was
     /// fetched and its age is on the screen, and replacing a slightly old answer with none is not
     /// an improvement.
@@ -309,6 +351,18 @@ impl AppCore {
         let collection = self.store.load_collection()?;
         let snapshot = self.store.latest_snapshot_meta()?;
         let mastery = self.mastery_checklist(&collection, snapshot.is_some())?;
+        // A part is never mastered itself; it reads mastered through the item it builds. Saved
+        // mastery is enough to prove that, so this holds under every access mode.
+        let holdings = Holdings::from_entries(collection.entries());
+        let ledger = self
+            .mastery_catalog
+            .as_deref()
+            .map(|catalog| MasteryLedger::new(catalog, &holdings, None));
+        let item_mastered = |entry: &warframe_domain::InventoryEntry| {
+            ledger
+                .as_ref()
+                .is_some_and(|ledger| ledger.part_item_mastered(entry.item.id.catalog_path()))
+        };
         let mut items = collection
             .entries()
             .map(|entry| {
@@ -318,7 +372,9 @@ impl AppCore {
                 // could make, and the number on a missing part is what tells the player
                 // which relic reward to take.
                 if entry.quantity == 0 {
-                    return CollectionItemView::from(entry).with_ducats(self.ducats_for(entry));
+                    return CollectionItemView::from(entry)
+                        .with_ducats(self.ducats_for(entry))
+                        .with_item_mastered(item_mastered(entry));
                 }
                 // Both lookups go through the market's own name for the item: the live cache is
                 // keyed by what was asked for, and that is never the catalog's name for a relic.
@@ -378,6 +434,7 @@ impl AppCore {
                         .and_then(|(name, prices)| prices.monthly_trades(name)),
                 )
                 .with_ducats(self.ducats_for(entry))
+                .with_item_mastered(item_mastered(entry))
             })
             .collect::<Vec<_>>();
         items.sort_by(|left, right| left.id.cmp(&right.id));
@@ -509,8 +566,9 @@ impl AppCore {
                 if let Some(image_name) = metadata.image_name() {
                     item = item.with_image_name(image_name)?;
                 }
-                let enriched =
-                    InventoryEntry::new(item, entry.quantity).with_mastered(entry.mastered);
+                let enriched = InventoryEntry::new(item, entry.quantity)
+                    .with_mastered(entry.mastered)
+                    .with_equipped(entry.equipped);
                 // Enrichment is about the card, not the copies. Dropping the rank here put both
                 // rows of a mod back on one price.
                 Ok(match entry.rank {
@@ -568,6 +626,7 @@ impl AppCore {
                 self.mastery_facts = Some(result.mastery_facts().clone());
                 self.reward = RewardAdvisor::advise(Vec::new());
                 self.health.game_reader = BackendHealth::inventory_sync(&meta)?;
+                self.health.awaiting_login = false;
                 self.health.acquisition_stages = result
                     .health()
                     .stages()
@@ -604,10 +663,20 @@ impl AppCore {
                     .copied()
                     .map(AcquisitionStageView::from)
                     .collect();
+                self.health.awaiting_login =
+                    matches!(failure.error(), AcquisitionError::AuthorizationNotFound);
                 self.health.game_reader = match failure.error() {
                     AcquisitionError::GameNotRunning | AcquisitionError::LauncherRunning => {
                         BackendHealth::idle(failure.to_string(), last_success)?
                     }
+                    // The game holds no inventory authorization until the player has logged in,
+                    // so the scan that runs as the process appears always misses. That is the
+                    // game still starting, not something for the player to fix; the monitor
+                    // keeps retrying until the login lands.
+                    AcquisitionError::AuthorizationNotFound => BackendHealth::idle(
+                        "Waiting for Warframe login; inventory loads once you are in",
+                        last_success,
+                    )?,
                     _ => match failure.health().stages().first().map(|stage| stage.state()) {
                         Some(StageState::Degraded) => BackendHealth::new(
                             HealthState::Degraded,
@@ -949,6 +1018,10 @@ pub struct CollectionItemView {
     category: Category,
     quantity: u32,
     mastered: bool,
+    /// A part or blueprint whose item, and everything built from that item, is mastered. Never
+    /// set on the equipment row itself, which says so through `mastered`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    item_mastered: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     image_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -968,6 +1041,9 @@ pub struct CollectionItemView {
     rank: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_rank: Option<u32>,
+    /// Copies installed in a build, absent when the inventory read did not establish it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    equipped: Option<u32>,
     live: bool,
     /// Whether warframe.market can be asked about this item at all.
     priceable: bool,
@@ -998,6 +1074,11 @@ impl CollectionItemView {
         self.mastered
     }
 
+    /// Whether this part builds an item the account has fully mastered.
+    pub fn item_mastered(&self) -> bool {
+        self.item_mastered
+    }
+
     pub fn image_url(&self) -> Option<&str> {
         self.image_url.as_deref()
     }
@@ -1022,6 +1103,10 @@ impl CollectionItemView {
 
     pub fn max_rank(&self) -> Option<u32> {
         self.max_rank
+    }
+
+    pub fn equipped(&self) -> Option<u32> {
+        self.equipped
     }
 
     /// Whether this price came from warframe.market just now, rather than from the daily dump.
@@ -1069,6 +1154,11 @@ impl CollectionItemView {
         self.ducats = ducats;
         self
     }
+
+    fn with_item_mastered(mut self, item_mastered: bool) -> Self {
+        self.item_mastered = item_mastered;
+        self
+    }
 }
 
 impl From<&warframe_domain::InventoryEntry> for CollectionItemView {
@@ -1079,6 +1169,7 @@ impl From<&warframe_domain::InventoryEntry> for CollectionItemView {
             category: entry.item.category,
             quantity: entry.quantity,
             mastered: entry.mastered,
+            item_mastered: false,
             image_url: entry.item.image_name.as_ref().map(|name| {
                 format!(
                     "https://raw.githubusercontent.com/WFCD/warframe-items/master/data/img/{name}"
@@ -1089,6 +1180,7 @@ impl From<&warframe_domain::InventoryEntry> for CollectionItemView {
             ducats: None,
             rank: entry.rank,
             max_rank: entry.max_rank,
+            equipped: entry.equipped,
             live: false,
             priceable: false,
             monthly_trades: None,
@@ -1195,6 +1287,10 @@ pub struct HealthView {
     collection_prices: BackendHealth,
     database: BackendHealth,
     acquisition_stages: Vec<AcquisitionStageView>,
+    /// The last inventory attempt found no authorization, which is what a game still at its
+    /// login screen looks like. The monitor reads this to know a retry is worth scheduling.
+    #[serde(skip)]
+    awaiting_login: bool,
     /// The linked warframe.market account, kept apart from `market`: that row answers "could we
     /// reach warframe.market for a price", and this one answers "is an account connected". One
     /// can be healthy while the other is not.
@@ -1218,6 +1314,7 @@ impl HealthView {
             )?,
             database: BackendHealth::ready("SQLite database available", None)?,
             acquisition_stages: Vec::new(),
+            awaiting_login: false,
             market_account: BackendHealth::idle("No warframe.market account linked", None)?,
         })
     }
@@ -1265,6 +1362,10 @@ impl HealthView {
 
     pub fn acquisition_stages(&self) -> &[AcquisitionStageView] {
         &self.acquisition_stages
+    }
+
+    pub fn awaiting_login(&self) -> bool {
+        self.awaiting_login
     }
 
     pub fn market_account(&self) -> &BackendHealth {
@@ -1340,6 +1441,13 @@ pub struct ReconciledOrder {
     /// the order's `item_id` and the row's key are namespaces that share nothing, and only the
     /// item table joins them.
     pub row_id: Option<String>,
+    /// Whether the order lists whole sets, so an overshoot's count is of sets the parts complete
+    /// rather than of copies held.
+    pub is_set: bool,
+    /// For a set the recipe describes: how many whole sets the parts left for this listing
+    /// complete, after part listings and earlier listings of the same set take theirs. The bound an
+    /// edit of the set's quantity is held to, the way a part's edit is held to its row's holding.
+    pub sets_held: Option<u32>,
     pub status: OrderStatus,
 }
 
@@ -1352,53 +1460,192 @@ pub struct ReconciledOrder {
 /// keep the last coherent inventory when the reader breaks, so a snapshot can be stale or absent
 /// while looking exactly like a current one from here. Judging against one produces confident
 /// accusations about orders that were never wrong: each with a delete button beside it.
+///
+/// A set is judged through its build's recipe, when `recipes` has loaded and knows one. Parts
+/// are spent on part listings first and sets are measured against what is left: a part listed on
+/// its own is the narrower promise, and a holding that covers it and a set besides is the case
+/// the collection can confirm, not the one it has to choose between.
 pub fn reconcile_orders(
     orders: &[MarketOrder],
     items: &MarketItems,
     collection: &Collection,
     snapshot: Option<&SnapshotMeta>,
+    recipes: Option<&CatalogIndex>,
 ) -> Vec<ReconciledOrder> {
     // Quantity per card, summed across ranks. A card at two ranks is two entries in the
     // collection and one listing on the market, so comparing against either entry alone would
     // call a legitimate order an overshoot.
-    let mut owned: std::collections::HashMap<&str, u32> = std::collections::HashMap::new();
+    let mut owned: HashMap<&str, u32> = HashMap::new();
     for entry in collection.entries() {
         *owned.entry(entry.item.id.catalog_path()).or_default() += entry.quantity;
     }
 
+    let mut statuses = orders
+        .iter()
+        .map(|order| status_for(order, items, &owned, snapshot))
+        .collect::<Vec<_>>();
+    let mut sets_held = vec![None; orders.len()];
+
+    // What part listings leave over for sets. Every unranked sell order on a comparable item
+    // claims its share, judged or not: an order newer than the snapshot still promises the copies.
+    let mut left: HashMap<String, u32> = owned
+        .iter()
+        .map(|(path, quantity)| ((*path).to_owned(), *quantity))
+        .collect();
+    for order in orders {
+        if order.kind != OrderKind::Sell
+            || order.rank.is_some_and(|rank| rank > 0)
+            || !items.comparable(&order.item_id)
+        {
+            continue;
+        }
+        if let Some(held) = items
+            .catalog_path(&order.item_id)
+            .and_then(|path| left.get_mut(path))
+        {
+            *held = held.saturating_sub(order.quantity);
+        }
+    }
+    if let Some(recipes) = recipes {
+        for ((order, status), sets_held) in orders
+            .iter()
+            .zip(statuses.iter_mut())
+            .zip(sets_held.iter_mut())
+        {
+            if order.kind != OrderKind::Sell || !items.is_set(&order.item_id) {
+                continue;
+            }
+            let Some(slots) = items
+                .catalog_path(&order.item_id)
+                .and_then(|path| set_slots(path, items, recipes))
+            else {
+                continue;
+            };
+            let complete = slots
+                .iter()
+                .map(|slot| slot.held(&left) / slot.per_set)
+                .min()
+                .unwrap_or(0);
+            *sets_held = Some(complete);
+            // Spent whether or not this order is judged, so a second listing of the same set is
+            // measured against what the first one leaves.
+            let spent = complete.min(order.quantity);
+            for slot in &slots {
+                slot.spend(&mut left, spent.saturating_mul(slot.per_set));
+            }
+            if judgeable(order, snapshot) {
+                *status = match complete {
+                    0 => OrderStatus::Missing,
+                    complete if complete < order.quantity => {
+                        OrderStatus::Overshoot { owned: complete }
+                    }
+                    _ => OrderStatus::Ok,
+                };
+            }
+        }
+    }
+
     orders
         .iter()
-        .map(|order| ReconciledOrder {
+        .zip(statuses)
+        .zip(sets_held)
+        .map(|((order, status), sets_held)| ReconciledOrder {
             order: order.clone(),
             name: items.name(&order.item_id).map(str::to_owned),
             row_id: items.row_of(&order.item_id, order.rank, order.subtype.as_deref()),
-            status: status_for(order, items, &owned, snapshot),
+            is_set: items.is_set(&order.item_id),
+            sets_held,
+            status,
         })
         .collect()
 }
 
-fn status_for(
-    order: &MarketOrder,
-    items: &MarketItems,
-    owned: &std::collections::HashMap<&str, u32>,
-    snapshot: Option<&SnapshotMeta>,
-) -> OrderStatus {
+/// One part a set hands over, with every path the collection may hold it under.
+struct SetSlot {
+    /// The part itself, then its `…Blueprint` spelling where it has one: a Frame's parts are held
+    /// as blueprints and recipes name the built component.
+    paths: Vec<String>,
+    per_set: u32,
+}
+
+impl SetSlot {
+    fn held(&self, left: &HashMap<String, u32>) -> u32 {
+        self.paths
+            .iter()
+            .map(|path| left.get(path).copied().unwrap_or(0))
+            .sum()
+    }
+
+    fn spend(&self, left: &mut HashMap<String, u32>, mut copies: u32) {
+        for path in &self.paths {
+            if let Some(held) = left.get_mut(path) {
+                let taken = copies.min(*held);
+                *held -= taken;
+                copies -= taken;
+            }
+        }
+    }
+}
+
+/// The parts a set listing stands for, or `None` when the recipe cannot say.
+///
+/// The recipe's blueprint and parts, kept only where warframe.market sells that component: a
+/// whole weapon a build consumes (Akbronco's two Broncos) is not in the market's set, and neither
+/// is Shedu's untradable blueprint. Fewer than two slots left is a recipe that does not describe
+/// the set the market sells (the Duviri weapons, whose parts the market lists under paths the
+/// catalogue does not use), and a set judged on the blueprint alone would be called complete by
+/// a holding that is not.
+fn set_slots(path: &str, items: &MarketItems, recipes: &CatalogIndex) -> Option<Vec<SetSlot>> {
+    let slots = recipes
+        .recipe(path)?
+        .components
+        .iter()
+        .filter(|slot| slot.kind != ComponentKind::Ingredient)
+        .filter_map(|slot| {
+            let mut paths = vec![slot.path.clone()];
+            if let Some(stem) = slot.path.strip_suffix("Component") {
+                paths.push(format!("{stem}Blueprint"));
+            }
+            paths
+                .iter()
+                .any(|path| items.publishes(path))
+                .then_some(SetSlot {
+                    paths,
+                    per_set: slot.per_build.max(1),
+                })
+        })
+        .collect::<Vec<_>>();
+    (slots.len() >= 2).then_some(slots)
+}
+
+/// Whether the snapshot may speak about this order at all: a sell order for an unranked copy,
+/// placed before the inventory it is measured against was read.
+fn judgeable(order: &MarketOrder, snapshot: Option<&SnapshotMeta>) -> bool {
     // Owning none of something is the ordinary state for something you are trying to buy.
     if order.kind != OrderKind::Sell {
-        return OrderStatus::Unverifiable;
+        return false;
     }
     // A rank names a particular copy, and the collection stores each rank separately. Which copies
     // the order means is not answerable from the order, so a maxed arcane listed at rank 5 is not
     // evidence about the unranked stack of the same card.
     if order.rank.is_some_and(|rank| rank > 0) {
-        return OrderStatus::Unverifiable;
+        return false;
     }
     let (Some(snapshot), Some(updated_at)) = (snapshot, order.updated_at) else {
-        return OrderStatus::Unverifiable;
+        return false;
     };
     // Both ingest adapters expose one ordered instant. Keeping format knowledge at those seams
     // makes this reconciliation module deeper and preserves locality for the money-adjacent rule.
-    if snapshot.observed_at() <= updated_at {
+    snapshot.observed_at() > updated_at
+}
+
+fn status_for(
+    order: &MarketOrder,
+    items: &MarketItems,
+    owned: &HashMap<&str, u32>,
+    snapshot: Option<&SnapshotMeta>,
+) -> OrderStatus {
+    if !judgeable(order, snapshot) {
         return OrderStatus::Unverifiable;
     }
     let Some(path) = items.catalog_path(&order.item_id) else {
@@ -1408,7 +1655,7 @@ fn status_for(
     // four refinements the collection stores separately, and a set's path names the built item
     // rather than the parts a seller actually holds. Asking whether either is owned always answers
     // no, so an unguarded comparison would flag most of a real account's listings as missing and
-    // offer to delete them.
+    // offer to delete them. A set is judged separately, through its recipe.
     if !items.comparable(&order.item_id) {
         return OrderStatus::Unverifiable;
     }

@@ -110,8 +110,7 @@ DNF/Copr repository or sign the package.
   `libgtk-3-0` from that generator, plus the `libpipewire-0.3-0` this project configures. Declare
   what Tauri needs rather than bundling system libraries blindly.
 - The app reaches three external programs. Two it spawns itself to read the game screen:
-  `tesseract`, for the reward cards and for the Ducat Kiosk grid tiles, basket rows and quantity
-  prefixes, which reuse the same engine and spawn path, and `xwininfo -root -tree` on Linux, which
+  `tesseract`, for the reward cards, and `xwininfo -root -tree` on Linux, which
   is how Warframe is found when Wine's virtual desktop hides it from the ordinary window list.
   Both are spawned directly, with a fixed argument list and no shell in between. Neither is a hard
   dependency, because the collection browser and the marketplace never call either, and only Wine's

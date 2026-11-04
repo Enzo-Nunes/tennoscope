@@ -130,11 +130,11 @@ mod tests {
         assert_ne!(failure, ERR_COOLDOWN);
         assert_eq!(reward.capture_monitor(invalid).err(), Some(ERR_COOLDOWN));
 
-        let mut kiosk = DxgiCapture::new();
-        assert_eq!(kiosk.capture_monitor(invalid).err(), Some(ERR_COOLDOWN));
+        let mut second = DxgiCapture::new();
+        assert_eq!(second.capture_monitor(invalid).err(), Some(ERR_COOLDOWN));
         drop(reward);
-        assert_eq!(kiosk.capture_monitor(invalid).err(), Some(ERR_COOLDOWN));
-        drop(kiosk);
+        assert_eq!(second.capture_monitor(invalid).err(), Some(ERR_COOLDOWN));
+        drop(second);
 
         // The unused probe must not keep the old failure alive after the last active reader left.
         let mut next_observation = DxgiCapture::new();

@@ -43,10 +43,6 @@ fn set_matched_rect(snapshot: &std::sync::Mutex<Option<WindowRect>>, rect: Windo
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(rect);
 }
 
-pub(crate) fn publish_latest_matched_rect(rect: WindowRect) {
-    set_matched_rect(&LATEST_MATCHED_RECT, rect);
-}
-
 fn clear_matched_rect(snapshot: &std::sync::Mutex<Option<WindowRect>>) {
     *snapshot
         .lock()
@@ -205,9 +201,10 @@ fn read_capture_candidates<T>(
 ///
 /// Widest first, and that ordering is load-bearing: a two-card block sits exactly over a four-card
 /// block's middle two cards, so a four-card screen reads perfectly clean as "two cards" and would
-/// quietly lose half the rewards if two were tried first. A solo run is not tried at all: one card
-/// sits where a three-card screen's middle card sits, and a single reward is not a choice worth
-/// advising on anyway.
+/// quietly lose half the rewards if two were tried first. A single card is read too, last: when only
+/// one relic opens there is nothing to choose, but the card's value and mastery are still worth
+/// seeing. It sits exactly where a three-card screen's middle card sits, so it gets the same
+/// tiebreak as two cards against four: it is only taken when the three-card left slot read blank.
 ///
 /// Split out from the capture so it can be exercised against a real labelled screen instead of
 /// only against a live game.
@@ -229,9 +226,9 @@ pub fn read_cards_in(
         return Err("no reward candidates");
     }
     let (width, height) = image.dimensions();
-    // Up to three layouts per poll rather than one, so a poll off the reward screen costs
-    // three crops instead of one, about 200ms every two seconds. Narrow it by asking the log for
-    // the squad size if that ever shows up in a profile.
+    // Up to four layouts per poll rather than one. Each costs a crop or two, and polling only runs
+    // while the log says a reward screen is open. Narrow it by asking the log for the squad size if
+    // that ever shows up in a profile.
     let widest = read_cards_at(image, width, height, MAX_CARDS, candidates);
     if widest.is_ok() {
         return widest.map_err(|(_, reason)| reason);
@@ -242,17 +239,21 @@ pub fn read_cards_in(
     // genuinely nothing out there and the block really is narrower; any text at all means a wider
     // screen with a pool gap, and publishing its middle two as the whole screen would be a confident
     // half-answer. That case fails closed, exactly as it did before there was anything to guess.
-    let outside_the_block_is_empty = matches!(&widest, Err((0, BLANK_CARD)));
-    for cards in (2..MAX_CARDS).rev() {
+    // One card against three is the same ambiguity a layout narrower, settled the same way by the
+    // three-card slot 0. Nothing else is needed: the lone card sits between the four-card middle
+    // slots, and on a four- or two-card screen the three-card slot 0 overlaps a card and is not blank.
+    let mut left_slot_blank = [false; MAX_CARDS + 1];
+    left_slot_blank[MAX_CARDS] = matches!(&widest, Err((0, BLANK_CARD)));
+    for cards in (1..MAX_CARDS).rev() {
         // Dropping one card shifts the block half a pitch, so a layout two cards narrower is shifted
-        // a whole pitch and its slots land exactly on the widest layout's. Those are the ambiguous
+        // a whole pitch and its slots land exactly on the wider layout's. Those are the ambiguous
         // ones, and only those need the tiebreak.
-        let shares_slots_with_the_widest = (MAX_CARDS - cards) % 2 == 0;
-        if shares_slots_with_the_widest && !outside_the_block_is_empty {
-            break;
+        if left_slot_blank.get(cards + 2) == Some(&false) {
+            continue;
         }
-        if let Ok(read) = read_cards_at(image, width, height, cards, candidates) {
-            return Ok(read);
+        match read_cards_at(image, width, height, cards, candidates) {
+            Ok(read) => return Ok(read),
+            Err(failed) => left_slot_blank[cards] = matches!(failed, (0, BLANK_CARD)),
         }
     }
     widest.map_err(|(_, reason)| reason)
@@ -495,18 +496,6 @@ pub fn ocr_crop(image: &Path) -> Result<String, &'static str> {
     run_tesseract(image, "11", None)
 }
 
-/// Kiosk label slots: `--psm 6`, one uniform block of text.
-///
-/// The deliberate counterpart to [`ocr_crop`]'s `psm 11`, not a contradiction of it. Reward
-/// title bands are mostly empty room with a possible speck, and `psm 6` calls the speck the
-/// block. Kiosk label crops are the inverse: the label fills the bottom of the crop and the
-/// card art fills the top, and bright art is a large white mass, not a speck. Under `psm 11`
-/// that mass joins the segmentation and eats any glyphs touching it; `psm 6` makes the
-/// narrower claim (one ordered block) for a one-label crop.
-pub fn ocr_crop_block(image: &Path) -> Result<String, &'static str> {
-    run_tesseract(image, "6", None)
-}
-
 fn run_tesseract(
     image: &Path,
     page_segmentation_mode: &str,
@@ -522,7 +511,7 @@ fn run_tesseract(
     #[cfg(windows)]
     command.creation_flags(0x0800_0000);
     // One recognition thread per spawn: tesseract's own OpenMP pooling oversubscribes the
-    // machine when several crops are read side by side, and the kiosk poller does exactly that.
+    // machine when several crops are read side by side, as the reward reader does.
     command.env("OMP_THREAD_LIMIT", "1");
     // The bundled engine's `eng.traineddata` sits beside it, not in the install prefix it was
     // compiled with, so it has to be told where to look. `--tessdata-dir` rather than the
@@ -534,14 +523,71 @@ fn run_tesseract(
             tessdata_dir_arg(directory).as_os_str(),
         ]);
     }
+    #[cfg(target_os = "linux")]
+    clear_appimage_library_path(&mut command);
     command
         .arg(image)
         .args(["-", "--psm", page_segmentation_mode]);
     if let Some(whitelist) = whitelist {
         command.args(["-c", &format!("tessedit_char_whitelist={whitelist}")]);
     }
-    let text = command.output().map_err(|_| "tesseract is not available")?;
-    Ok(String::from_utf8_lossy(&text.stdout).into_owned())
+    let output = command.output().map_err(|_| "tesseract is not available")?;
+    // A tesseract that cannot start still writes nothing to stdout, and an empty stdout is
+    // otherwise indistinguishable from a card with no text on it. That is how the 2026-10-28
+    // symbol-lookup failure below hid for a week: every read came back blank, nothing said why.
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::warn!(
+            "ocr: tesseract exited with {}: {}",
+            output.status,
+            stderr.lines().next().unwrap_or("(no stderr)")
+        );
+        return Err("tesseract failed to run");
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Keep the AppImage's own libraries away from the system Tesseract.
+///
+/// The AppImage runtime prepends `$APPDIR/usr/lib` and its siblings to `LD_LIBRARY_PATH` for the
+/// app, and every child inherits that. Linux packages run the distribution's Tesseract, which was
+/// linked against the distribution's libraries, not the ones bundled from the build host. On
+/// 2026-10-28 that broke every read on Arch: the bundle's libjpeg-turbo 2.1.2 shadowed the system's
+/// 3.x, and the system libtiff then died with `undefined symbol: jpeg12_write_raw_data` (exit 127)
+/// before it read a pixel. Only the bundle's entries go, so a path the user set still applies.
+#[cfg(target_os = "linux")]
+fn clear_appimage_library_path(command: &mut Command) {
+    if std::env::var_os("APPIMAGE").is_none() {
+        return;
+    }
+    let (Some(appdir), Some(library_path)) = (
+        std::env::var_os("APPDIR"),
+        std::env::var_os("LD_LIBRARY_PATH"),
+    ) else {
+        return;
+    };
+    match without_appdir_entries(&library_path, Path::new(&appdir)) {
+        Some(kept) => command.env("LD_LIBRARY_PATH", kept),
+        None => command.env_remove("LD_LIBRARY_PATH"),
+    };
+}
+
+/// `library_path` with every entry inside `appdir` dropped, or `None` when nothing is left.
+///
+/// Empty entries go too: the runtime's `%s/usr/lib/:...:%s` template leaves one behind when the
+/// variable was unset before launch, and the loader reads an empty entry as the working directory.
+#[cfg(any(target_os = "linux", all(test, unix)))]
+fn without_appdir_entries(
+    library_path: &std::ffi::OsStr,
+    appdir: &Path,
+) -> Option<std::ffi::OsString> {
+    let kept: Vec<PathBuf> = std::env::split_paths(library_path)
+        .filter(|entry| !entry.as_os_str().is_empty() && !entry.starts_with(appdir))
+        .collect();
+    if kept.is_empty() {
+        return None;
+    }
+    std::env::join_paths(kept).ok()
 }
 
 /// The `--tessdata-dir` value Tesseract can actually open.
@@ -1022,6 +1068,48 @@ mod tests {
         assert_eq!(
             super::tessdata_dir_arg(std::path::Path::new("/usr/share/tessdata")),
             std::path::PathBuf::from("/usr/share/tessdata"),
+        );
+    }
+
+    /// The AppImage runtime's own entries must go and the user's must stay, in order: on
+    /// 2026-10-28 the bundle's libjpeg shadowed the system one and every Tesseract spawn died.
+    #[cfg(unix)]
+    #[test]
+    fn appimage_library_entries_are_dropped_and_user_entries_kept() {
+        let appdir = std::path::Path::new("/tmp/.mount_TennoSabc123");
+        let library_path = std::ffi::OsStr::new(
+            "/tmp/.mount_TennoSabc123/usr/lib/:/tmp/.mount_TennoSabc123/lib/x86_64-linux-gnu/\
+             :/opt/cuda/lib64:/home/me/lib",
+        );
+        assert_eq!(
+            super::without_appdir_entries(library_path, appdir),
+            Some(std::ffi::OsString::from("/opt/cuda/lib64:/home/me/lib")),
+        );
+    }
+
+    /// With only the runtime's entries, plus the empty one its template leaves when the variable
+    /// was unset at launch, nothing is left and the variable should be removed outright.
+    #[cfg(unix)]
+    #[test]
+    fn appimage_library_path_with_nothing_of_the_users_is_removed() {
+        let appdir = std::path::Path::new("/tmp/.mount_TennoSabc123");
+        let library_path = std::ffi::OsStr::new(
+            "/tmp/.mount_TennoSabc123/usr/lib/:/tmp/.mount_TennoSabc123/lib/:",
+        );
+        assert_eq!(super::without_appdir_entries(library_path, appdir), None);
+    }
+
+    /// `starts_with` is per component, so a sibling directory that merely shares the mount
+    /// point's name as a string prefix is the user's, not the bundle's.
+    #[cfg(unix)]
+    #[test]
+    fn appimage_filter_does_not_drop_a_lookalike_sibling() {
+        let appdir = std::path::Path::new("/tmp/.mount_TennoS");
+        let library_path =
+            std::ffi::OsStr::new("/tmp/.mount_TennoS/usr/lib:/tmp/.mount_TennoSx/lib");
+        assert_eq!(
+            super::without_appdir_entries(library_path, appdir),
+            Some(std::ffi::OsString::from("/tmp/.mount_TennoSx/lib")),
         );
     }
 }

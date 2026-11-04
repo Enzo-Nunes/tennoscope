@@ -388,12 +388,11 @@ fn a_stacked_reward_matches_the_item_it_stacks() {
     assert!(!reward_name_matches("Forma Blueprint", "X Forma Blueprint"));
 }
 
-/// The kiosk reads the game's own labels and joins prices against warframe.market's, and both
+/// The reward reader reads the game's own labels and joins prices against warframe.market's, and both
 /// spell a prime Frame's tradable part by its blueprint: "Styanax Prime Neuroptics Blueprint".
-/// The component loop named it after the part the blueprint builds, so the kiosk's closed-set
+/// The component loop named it after the part the blueprint builds, so the closed-set
 /// match landed on the nearest shorter name ("Styanax Prime Neuroptics", a different item) and
-/// the price join, keyed by the market spelling, found nothing: the tile went unpriced while its
-/// basket row showed a dash (2026-08-24). Weapon parts are built items in both vocabularies and
+/// the price join, keyed by the market spelling, found nothing (2026-08-24). Weapon parts are built items in both vocabularies and
 /// keep their bare names.
 #[test]
 fn a_prime_frames_components_are_named_by_their_blueprint() {
@@ -421,8 +420,8 @@ fn a_prime_frames_components_are_named_by_their_blueprint() {
     assert!(!names.iter().any(|name| name == "Lavos Prime Chassis"));
 }
 
-/// The kiosk reads an Archwing's Wings tile by its blueprint name. Without that name in the closed
-/// set, a clean read lands on the Harness Blueprint and the tile shows the Harness price.
+/// The game labels an Archwing's Wings by its blueprint name. Without that name in the closed
+/// set, a clean read lands on the Harness Blueprint and shows the Harness price.
 #[test]
 fn an_archwings_wings_are_named_by_their_blueprint() {
     const WINGS_BP: &str =
@@ -704,5 +703,69 @@ fn everything_held_or_unmasterable_leaves_nothing_to_pad() {
         padding.is_empty(),
         "Braton is held, Serration earns no mastery, and the Amp is not equipment the index \
          can classify: {padding:?}"
+    );
+}
+
+/// A non-Prime build is indexed too: a Wraith or a Sentient weapon is mastered like a Prime, and
+/// its parts are the cards an "Item mastered" tag belongs on. Its parts carry no ducats and WFCD's
+/// `tradable` reads false on Shedu's, so a part is told from a resource by not being a catalogue
+/// item of its own; the gem the build also takes is one.
+#[test]
+fn non_prime_builds_index_their_parts_but_not_their_resources() {
+    let catalog = CatalogIndex::from_wfcd_json(
+        br#"[
+      {"uniqueName":"/Lotus/Weapons/Sentients/Shedu/SheduHeavyWeapon","name":"Shedu","type":"Primary","category":"Primary","masterable":true,
+       "components":[
+         {"uniqueName":"/Lotus/Types/Recipes/Weapons/SheduHeavyWeaponBlueprint","name":"Blueprint","tradable":false},
+         {"uniqueName":"/Lotus/Types/Recipes/Weapons/WeaponParts/SheduHeavyWeaponBarrel","name":"Barrel","tradable":false},
+         {"uniqueName":"/Lotus/Types/Items/Gems/Deimos/DeimosEidolonGemBCutItem","name":"Cabochon Embolos","tradable":true}
+       ]},
+      {"uniqueName":"/Lotus/Types/Items/Gems/Deimos/DeimosEidolonGemBCutItem","name":"Cabochon Embolos","type":"Misc","category":"Misc","masterable":false,"components":[]},
+      {"uniqueName":"/Lotus/Upgrades/Skins/Pride","name":"Pride","type":"Melee","category":"Melee","masterable":true,
+       "components":[{"uniqueName":"/Lotus/Types/Recipes/Weapons/WeaponParts/OrionScytheBlade","name":"Blade","tradable":false}]},
+      {"uniqueName":"/Lotus/Upgrades/Skins/Wrath","name":"Wrath","type":"Melee","category":"Melee","masterable":true,
+       "components":[{"uniqueName":"/Lotus/Types/Recipes/Weapons/WeaponParts/OrionScytheBlade","name":"Blade","tradable":false}]},
+      {"uniqueName":"/Lotus/Upgrades/Skins/Armor/Solaris","name":"Solaris Armor","type":"Misc","category":"Misc","masterable":false,
+       "components":[{"uniqueName":"/Lotus/Types/Recipes/Armor/SolarisArmorBlueprint","name":"Blueprint","tradable":true}]}
+    ]"#,
+    )
+    .expect("catalog parses");
+
+    let recipe = catalog
+        .recipe("/Lotus/Weapons/Sentients/Shedu/SheduHeavyWeapon")
+        .expect("a non-Prime masterable build has a recipe");
+    let slots = recipe
+        .components
+        .iter()
+        .map(|slot| (slot.name.as_str(), slot.kind))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        slots,
+        vec![
+            ("Blueprint", ComponentKind::Blueprint),
+            ("Barrel", ComponentKind::Part)
+        ]
+    );
+    assert!(
+        catalog
+            .part_parent("/Lotus/Types/Recipes/Weapons/WeaponParts/SheduHeavyWeaponBarrel")
+            .is_some()
+    );
+    assert!(
+        catalog
+            .part_parent("/Lotus/Types/Items/Gems/Deimos/DeimosEidolonGemBCutItem")
+            .is_none()
+    );
+    // A blade either scythe takes speaks for neither.
+    assert!(
+        catalog
+            .part_parent("/Lotus/Types/Recipes/Weapons/WeaponParts/OrionScytheBlade")
+            .is_none()
+    );
+    // A cosmetic is nothing mastery counts.
+    assert!(
+        catalog
+            .recipe("/Lotus/Upgrades/Skins/Armor/Solaris")
+            .is_none()
     );
 }

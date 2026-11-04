@@ -92,8 +92,8 @@ A native-Wayland game then tries wlroots screencopy, KWin ScreenShot2, and final
 already-live portal ScreenCast session; gameplay never negotiates a portal session or opens a
 desktop chooser. Windows uses the `win-capture` crate's DXGI Desktop Duplication backend rather
 than WGC, avoiding WGC's capture border without falling back to GDI for flip-model game content.
-Reward and kiosk readers share one serialized, lazily created duplication session; the last active
-reader releases it. Frame acquisition and GPU readback waits are bounded, failures use a shared
+Reward readers share one serialized, lazily created duplication session; the last active reader
+releases it. Frame acquisition and GPU readback waits are bounded, failures use a shared
 retry cooldown, and monitor changes recreate the session on the output's owning adapter. The
 crate confines unsafe Windows calls to one module; the application remains unsafe-free. Cropping
 receives physical desktop coordinates and upright pixels, including rotated and negative-origin

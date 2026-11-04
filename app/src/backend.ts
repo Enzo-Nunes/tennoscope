@@ -4,7 +4,7 @@ export type HealthState = 'ready' | 'idle' | 'degraded' | 'failed'
 export interface BackendHealth { state: HealthState; message: string; last_success: string | null }
 export interface AcquisitionStageHealth { stage: string; state: HealthState; message: string }
 export type ItemCategory = 'frame' | 'weapon' | 'companion' | 'prime_part' | 'relic' | 'resource' | 'blueprint' | 'vehicle' | 'mod' | 'arcane'
-export interface CollectionItem { id: string; name: string; category: ItemCategory; quantity: number; mastered: boolean; image_url?: string; platinum?: number; platinum_ceiling?: number; ducats?: number; rank?: number; max_rank?: number; live: boolean; priceable: boolean; monthly_trades?: number }
+export interface CollectionItem { id: string; name: string; category: ItemCategory; quantity: number; mastered: boolean; item_mastered?: boolean; image_url?: string; platinum?: number; platinum_ceiling?: number; ducats?: number; rank?: number; max_rank?: number; equipped?: number; live: boolean; priceable: boolean; monthly_trades?: number }
 /** Mastered and total for one equipment category, counted as the game's profile counts: an item mastered and since sold is still mastered. */
 export interface MasteryCategoryTotal { category: ItemCategory; mastered: number; total: number }
 /** What is left to master. `available` is false until an inventory has been read under Full access and the catalog has loaded. */
@@ -33,7 +33,7 @@ export type OrderStatus =
   | { state: 'overshoot'; owned: number }
   | { state: 'unverifiable' }
 export interface MarketOrder { id: string; item_id: string; kind: 'sell' | 'buy'; platinum: number; quantity: number; per_trade: number; rank?: number; subtype?: string; visible: boolean; updated_at?: number }
-export interface ReconciledOrder { order: MarketOrder; name?: string; row_id?: string; status: OrderStatus }
+export interface ReconciledOrder { order: MarketOrder; name?: string; row_id?: string; is_set?: boolean; sets_held?: number; status: OrderStatus }
 export interface MarketAccount { link: LinkState; backing?: CredentialBacking; orders: ReconciledOrder[]; fetched_at?: string; listed_platinum: number; flagged: number; listable: string[]; presence: PresenceView }
 
 export interface AppView {
@@ -65,29 +65,7 @@ export interface SetupStatus {
   desktop_capture_action_available: boolean
 }
 
-/**
- * Copies of a part the recipe takes (`uses`) and copies held. The strip's fraction starts at two
- * uses: for a part needed once, the game's own owned badge beside the strip already shows the count.
- */
-export interface KioskMastery { held: number; uses: number }
-/** One grid tile's corner chip, kept when its price, its mastery or both resolve. */
-export interface CellChip { col: number; row: number; name: string; platinum: number | null; mastery: KioskMastery | null }
-/** One basket row's platinum value; the game already draws the row's ducats. */
-export interface BasketChip { index: number; name: string; platinum: number | null }
-/** One poller epoch's whole overlay payload. */
-export interface KioskView {
-  session: number
-  epoch: number
-  cells: CellChip[]
-  basket: BasketChip[]
-  total_plat: number
-  scroll_dy: number
-  /** `unavailable` is the preference on with no live inventory behind it; the overlay says so once. */
-  mastery_status: 'off' | 'live' | 'unavailable'
-}
-
 export const getView = () => invoke<AppView>('get_view')
-export const getKioskView = () => invoke<KioskView | null>('get_kiosk_view')
 export const refreshInventory = () => invoke<AppView>('refresh_inventory')
 export const refreshPrices = (ids: string[]) => invoke<AppView>('refresh_prices', { itemIds: ids })
 export const loadFakeSession = () => invoke<AppView>('load_fake_session')

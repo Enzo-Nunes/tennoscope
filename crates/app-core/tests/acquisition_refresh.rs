@@ -23,13 +23,9 @@ fn failed_refresh_preserves_the_prior_persisted_snapshot_and_records_stage_healt
     let view = core.finish_inventory_refresh(Err(failure), None).unwrap();
 
     assert_eq!(view.collection().items()[0].id(), "prior");
-    assert_eq!(view.health().game_reader().state(), HealthState::Degraded);
-    assert!(
-        view.health()
-            .game_reader()
-            .message()
-            .contains("authorization")
-    );
+    assert_eq!(view.health().game_reader().state(), HealthState::Idle);
+    assert!(view.health().game_reader().message().contains("login"));
+    assert!(view.health().awaiting_login());
     assert_eq!(view.health().acquisition_stages().len(), 1);
     assert!(!view.health().game_reader().message().contains("accountId"));
 }

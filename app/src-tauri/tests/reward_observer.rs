@@ -62,6 +62,15 @@ fn observer_accepts_three_rewards_when_one_player_did_not_crack_a_relic() {
 }
 
 #[test]
+fn observer_accepts_a_single_reward_when_only_one_relic_opened() {
+    let mut state = RewardObserverState::new(1, 1);
+    let transition = state.observe(vec![RewardObservation::certain("Zakti Prime Receiver")]);
+
+    assert!(transition.show);
+    assert_eq!(transition.choices.len(), 1);
+}
+
+#[test]
 fn observer_republishes_a_confirmed_set_even_when_it_thinks_overlay_is_visible() {
     let choices = vec![
         RewardObservation::certain("A"),

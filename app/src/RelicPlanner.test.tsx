@@ -84,6 +84,25 @@ describe('RelicPlanner', () => {
     expect(screen.getByRole('columnheader', { name: /Gain per 100 traces/ })).toHaveAttribute('aria-sort', 'ascending')
   })
 
+  it('keeps its choices when the tab is left and opened again', async () => {
+    backend.getRelicPlan.mockResolvedValue(ready)
+    const { unmount } = render(<RelicPlanner effectiveMode="full"/>)
+    await screen.findByRole('table', { name: 'Relics' })
+    fireEvent.click(screen.getByRole('button', { name: /Gain per 100 traces/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lith' }))
+    fireEvent.click(screen.getByRole('button', { name: '3' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Only owned' }))
+    unmount()
+
+    render(<RelicPlanner effectiveMode="full"/>)
+    await screen.findByRole('table', { name: 'Relics' })
+    expect(screen.getByRole('columnheader', { name: /Gain per 100 traces/ })).toHaveAttribute('aria-sort', 'ascending')
+    expect(screen.getByRole('button', { name: 'Lith' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '3' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('checkbox', { name: 'Only owned' })).not.toBeChecked()
+    expect(backend.getRelicPlan).toHaveBeenLastCalledWith({ currency: 'platinum', squad: 3 })
+  })
+
   it('ranks by the value of opening each copy as it is', async () => {
     backend.getRelicPlan.mockResolvedValue(ready)
     render(<RelicPlanner effectiveMode="full"/>)
@@ -121,6 +140,22 @@ describe('RelicPlanner', () => {
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Only owned' }))
     expect(relicCells()).toContain('Meso C1 Intact')
+  })
+
+  it('finds relics by name or by the items they drop', async () => {
+    backend.getRelicPlan.mockResolvedValue(ready)
+    render(<RelicPlanner effectiveMode="full"/>)
+    await screen.findByRole('table', { name: 'Relics' })
+    const search = screen.getByRole('searchbox', { name: 'Search relics or rewards' })
+
+    fireEvent.change(search, { target: { value: 'nikana' } })
+    expect(relicCells()).toEqual(['Axi A1Vaulted Intact', 'Axi A1Vaulted Flawless', 'Axi A1Vaulted Radiant'])
+
+    fireEvent.change(search, { target: { value: 'lith b' } })
+    expect(relicCells()).toEqual(['Lith B1 Intact'])
+
+    fireEvent.change(search, { target: { value: 'citrine' } })
+    expect(relicCells()).toEqual([])
   })
 
   it('narrows the table to one era, and back to every era with Any', async () => {

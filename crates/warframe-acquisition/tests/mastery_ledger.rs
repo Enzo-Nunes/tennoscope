@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use common::recipes::*;
 use warframe_acquisition::{CatalogIndex, Holdings, MasteryEvidence, MasteryFacts, MasteryLedger};
-use warframe_domain::{KioskMastery, MasteryMark, SetPart};
+use warframe_domain::{MasteryMark, SetPart};
 
 fn holdings(quantity: &[(&str, u32)], mastered: &[&str]) -> Holdings {
     Holdings::from_parts(
@@ -178,11 +178,6 @@ fn a_mastered_ingredient_still_counts_toward_its_unmastered_consumer() {
             completes: false, // the chain view never claims a set completes
         })
     );
-    assert_eq!(
-        ledger.kiosk_mastery("Bronco Prime Barrel"),
-        None,
-        "Bronco Prime itself is mastered, so its parts get no kiosk strip"
-    );
 }
 
 #[test]
@@ -314,22 +309,22 @@ fn no_collection_means_unknown_and_non_mastery_items_get_no_mark() {
 }
 
 #[test]
-fn kiosk_mastery_reports_held_and_uses_for_live_unmastered_parts_only() {
+fn a_part_or_its_blueprint_reads_mastered_by_path_once_its_item_and_consumers_are() {
     let catalog = catalog();
-    let held = holdings(&[(GUANDAO_BLADE, 1)], &[]);
-    let facts = live(&[], &[]);
-    assert_eq!(
-        MasteryLedger::new(&catalog, &held, Some(&facts)).kiosk_mastery("Guandao Prime Blade"),
-        Some(KioskMastery { held: 1, uses: 2 })
+    let held = holdings(&[], &[GUANDAO, REVENANT, BRONCO]);
+    let ledger = MasteryLedger::new(&catalog, &held, None);
+    assert!(ledger.part_item_mastered(GUANDAO_BLADE));
+    assert!(ledger.part_item_mastered(GUANDAO_BP));
+    assert!(ledger.part_item_mastered(REVENANT_CHASSIS));
+    assert!(ledger.part_item_mastered(REVENANT_CHASSIS_BP));
+    assert!(
+        !ledger.part_item_mastered(BRONCO_BARREL),
+        "Akbronco is not mastered, so Bronco parts may still be needed"
     );
-    let mastered = holdings(&[(GUANDAO_BLADE, 1)], &[GUANDAO]);
-    assert_eq!(
-        MasteryLedger::new(&catalog, &mastered, Some(&facts)).kiosk_mastery("Guandao Prime Blade"),
-        None
-    );
-    assert_eq!(
-        MasteryLedger::new(&catalog, &held, None).kiosk_mastery("Guandao Prime Blade"),
-        None,
-        "kiosk strips need live evidence"
-    );
+    assert!(!ledger.part_item_mastered(AKBRONCO_LINK));
+    assert!(!ledger.part_item_mastered(KAVASA_BAND));
+    assert!(!ledger.part_item_mastered(GUANDAO));
+    assert!(!ledger.part_item_mastered(OROKIN_CELL));
+    let both = holdings(&[], &[BRONCO, AKBRONCO]);
+    assert!(MasteryLedger::new(&catalog, &both, None).part_item_mastered(BRONCO_BARREL));
 }

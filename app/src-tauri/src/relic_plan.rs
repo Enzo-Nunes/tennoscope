@@ -125,14 +125,13 @@ pub fn load_reference(app_data: &Path) -> Option<RelicReference> {
     let directory = app_data.join("catalog");
     let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
     let relics = RelicCatalogCache::new(&directory);
-    let drops = match relics.load_cached() {
-        Ok(load) => load.drops().clone(),
-        Err(_) => relics
-            .load(&WfcdRelicCatalogHttp::new().ok()?, now)
-            .ok()?
-            .drops()
-            .clone(),
-    };
+    let drops = match WfcdRelicCatalogHttp::new() {
+        Ok(source) => relics.load_fresh(&source, now),
+        Err(_) => relics.load_cached(),
+    }
+    .ok()?
+    .drops()
+    .clone();
     let catalog = CatalogCache::new(&directory);
     let entries = catalog
         .load_cached()

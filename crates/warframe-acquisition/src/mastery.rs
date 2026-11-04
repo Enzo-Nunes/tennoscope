@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use warframe_domain::{InventoryEntry, KioskMastery, MasteryMark, SetPart};
+use warframe_domain::{InventoryEntry, MasteryMark, SetPart};
 
 use crate::{CatalogIndex, ComponentKind, MasteryFacts, Recipe, RecipeComponent, mastery_rank};
 
@@ -61,7 +61,7 @@ impl Holdings {
 }
 
 /// Turns a catalog, a collection and this run's facts into the mark each reward carries. A
-/// saved collection proves mastery but never a missing part, so kiosk strips need live facts.
+/// saved collection proves mastery but never a missing part.
 pub struct MasteryLedger<'a> {
     catalog: &'a CatalogIndex,
     holdings: &'a Holdings,
@@ -110,26 +110,20 @@ impl<'a> MasteryLedger<'a> {
         }
     }
 
-    /// Counts for a kiosk strip, only under live facts and only while the part's own item is not
-    /// mastered, built or in the foundry, so never for a chain mark.
-    pub fn kiosk_mastery(&self, part_name: &str) -> Option<KioskMastery> {
-        if self.evidence() != MasteryEvidence::Live {
-            return None;
-        }
-        match self.reward_mark(part_name)? {
-            MasteryMark::Unmastered {
-                subject: None,
-                parts,
-                ..
-            } => {
-                let this = parts.iter().find(|slot| slot.this)?;
-                Some(KioskMastery {
-                    held: this.held,
-                    uses: this.uses,
-                })
-            }
-            _ => None,
-        }
+    /// Whether a part or its blueprint, by catalog path, builds an item the account has mastered
+    /// along with everything built from that item: the rule a saved collection's Mastered mark
+    /// follows, so it needs no live facts. False for a part of an item mastery never touches.
+    pub fn part_item_mastered(&self, part_path: &str) -> bool {
+        self.catalog
+            .part_parent(part_path)
+            .is_some_and(|(recipe, _)| {
+                let parent = recipe.parent.as_str();
+                self.catalog
+                    .resolve(parent)
+                    .is_some_and(|metadata| metadata.masterable())
+                    && self.closed(parent)
+                    && self.all_consumers_closed(parent)
+            })
     }
 
     /// A reward name to its parent recipe and the slot it fills there. Nothing when the name

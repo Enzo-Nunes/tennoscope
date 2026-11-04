@@ -264,7 +264,7 @@ beats a day-old completed trade, which beats a month-old one.
 
 A checked price lives exactly as long as the dump it was checked against: a refresh that brings back
 the same dump, which is the ordinary case, since the dumps lag two days, carries the checked
-prices across, and a genuinely newer dump clears them, after which the page offers to re-price what
+prices across, and a genuinely newer dump clears them, after which the page re-prices what
 is on screen. That is the whole freshness policy for a checked price and the only bound on how stale
 one can get.
 
@@ -356,6 +356,17 @@ a page refresh is in flight: it is the only thing that makes sixteen seconds of 
 prices arriving rather than as a frozen button, so the live refresh is deliberately not treated as
 a foreground operation. Ordering is still safe: a view is applied only while its request is the
 newest one started, so an older response can never land on top of a newer one.
+
+A page prices itself. Once the visible page has been in view for a little over a second, the
+frontend sends its owned, priceable items that do not already read as checked live, and the backend
+drops every name warframe.market has already answered about against today's dump (a price or no
+sellers) before making a request. So an item costs at most one paced request per dump day however
+often the player pages past it, a page already checked costs nothing, and the startup sweep's
+problem (requests nobody asked for, spent on every launch) does not come back: nothing is asked
+about that is not on screen. The same set of ids is sent once, because an item with nobody selling
+still reads as unchecked and would otherwise be re-sent on every poll. There is no manual control
+any more: the "Price these N" button is gone, so how often warframe.market is asked is the
+program's decision and never depends on how often someone clicks.
 
 ## What The Market Will Take
 

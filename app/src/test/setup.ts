@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest'
+import { afterEach } from 'vitest'
 
 // Node 26 defines its own `localStorage` global, which is undefined unless the process was started
 // with `--localstorage-file`, and it shadows the working one jsdom builds for every test window.
@@ -20,3 +21,10 @@ if (typeof localStorage === 'undefined') {
     } satisfies Storage,
   })
 }
+
+// Pages remember their sorts, filters and searches in storage, and a test should start from the
+// defaults rather than from whatever the test before it clicked.
+afterEach(() => {
+  localStorage.clear()
+  sessionStorage.clear()
+})

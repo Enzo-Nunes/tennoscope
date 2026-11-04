@@ -38,7 +38,7 @@ import { MetalMark } from './MetalMark'
 import { OrdersView } from './OrdersView'
 import { isListable, listedLabel, listedOrderFor } from './orders'
 import { SellForm, type SellHandler, type UpdateHandler } from './SellForm'
-import { atMaxRank, clampPage, collectionTotals, COLLECTION_PAGE_SIZE, masteryOrder, pageCount, pageItems, pageNumbers, rankLabel, stackValue } from './collection'
+import { atMaxRank, clampPage, collectionTotals, COLLECTION_PAGE_SIZE, ducatsPerPlatinum, hasEquipData, hasUnequippedCopy, isUnrankedUpgrade, masteryOrder, meetsMinPrice, MIN_PRICE_STEPS, pageCount, pageItems, pageNumbers, rankLabel, stackValue } from './collection'
 import { MAX_PRICE_FLOOR, readPriceFloor, readShowDucats, writePriceFloor, writeShowDucats } from './settings'
 import { snapshotFreshness, stampReading } from './freshness'
 import { bootUpdateChecks } from './updateStore'
@@ -48,10 +48,12 @@ import { reportBlockVisible } from './reportable'
 import { AccessSelector } from './AccessSelector'
 import { RelicPlanner } from './RelicPlanner'
 import { accessMode } from './access'
+import { isBoolean, isPageNumber, isString, oneOf, useRemembered } from './remembered'
 
 type Page = 'collection' | 'mastery' | 'relics' | 'rewards' | 'orders' | 'diagnostics' | 'settings' | 'about'
-type Ownership = 'all' | 'owned' | 'mastered' | 'missing' | 'tradeable'
-type Sort = 'name-asc' | 'quantity-desc' | 'category-asc' | 'mastery-asc' | 'platinum-desc' | 'ducats-desc'
+const OWNERSHIPS = ['all', 'owned', 'mastered', 'missing', 'tradeable'] as const
+type Ownership = typeof OWNERSHIPS[number]
+type Sort = 'name-asc' | 'quantity-desc' | 'category-asc' | 'mastery-asc' | 'platinum-desc' | 'ducats-desc' | 'ducat-ratio-desc'
 
 const categories: Array<{ value: ItemCategory | 'all'; label: string; tally: string }> = [
   { value: 'all', label: 'All categories', tally: '✳' },
@@ -77,7 +79,15 @@ const sortOptions: Array<{ value: Sort; label: string; metal?: 'plat' | 'ducat' 
   { value: 'mastery-asc', label: 'Unmastered first' },
   { value: 'platinum-desc', label: 'Platinum', metal: 'plat' },
   { value: 'ducats-desc', label: 'Ducats', metal: 'ducat' },
+  { value: 'ducat-ratio-desc', label: 'Ducats per plat', metal: 'ducat' },
 ]
+
+// Best to sell to Baro first: the most ducats per platinum given up. A part with ducats but no
+// price yet follows the ranked ones, since its ratio is unknown rather than poor, and everything
+// that earns no ducats comes last. Equal ratios put the bigger ducat payout first.
+function ducatRatioRank(item: { ducats?: number; platinum?: number }): number {
+  return ducatsPerPlatinum(item) ?? (item.ducats === undefined ? -2 : -1)
+}
 
 const categoryName = Object.fromEntries(categories.map(category => [category.value, category.label])) as Record<ItemCategory | 'all', string>
 
@@ -343,15 +353,17 @@ function App() {
    * it. Ordering remains coherent: `requestView` applies a response only while its request is
    * newest one started, so an older view can never land on top of a newer one.
    *
-   * The local flag exists only to hold the control down for the up-to-2.5s gap before the poll
-   * carries the backend's own progress. The counting is the backend's: it is the only party that
-   * knows the total, and it publishes the count the same way for every pass.
+   * The Collection page starts this on its own when a page has been in view for a moment; there is
+   * no button for it. The backend asks only about items warframe.market has not answered about
+   * against today's dump, so each item costs at most one paced request a dump day, and a page
+   * already checked costs nothing. The local flag covers the up-to-2.5s gap before the poll
+   * carries the backend's own progress.
    */
-  async function priceLive(ids: string[]) {
+  const priceLive = useCallback(async (ids: string[]) => {
     setPricing(true)
     await requestView(() => refreshPrices(ids), 'Live prices could not be fetched.')
     setPricing(false)
-  }
+  }, [requestView])
 
   /**
    * Every market write goes through here: fresh view on success, a banner on failure. The optional
@@ -577,14 +589,42 @@ function LoadingView() {
   </section>
 }
 
+/** Runs `reset` when any of `inputs` changes, but not on mount: a page returned to keeps the page of
+ * results it was left on, and only a new search, filter or sort starts back at the first. Comparing
+ * against the last inputs seen, rather than skipping the first run, holds under StrictMode's double
+ * mount too. */
+function useResetOnChange(reset: () => void, inputs: unknown[]) {
+  const key = JSON.stringify(inputs)
+  const last = useRef(key)
+  useEffect(() => {
+    if (last.current === key) return
+    last.current = key
+    reset()
+  }, [key, reset])
+}
+
+/** How long a page has to stay in view before it is priced live: long enough that paging or typing
+ * through results does not start a pass per keystroke. */
+const AUTO_PRICE_DELAY_MS = 1200
+
 function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor, showDucats, onToggleDucats, onSell, onUpdate, ordersBusy }: { view: AppView; effectiveMode: AccessMode; pricing: boolean; onPriceLive: (ids: string[]) => void; priceFloor: number; showDucats: boolean; onToggleDucats: () => void; onSell: SellHandler; onUpdate: UpdateHandler; ordersBusy: boolean }) {
   const ownershipVerified = effectiveMode === 'full'
   const snapshotOnly = !ownershipVerified
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState<ItemCategory | 'all'>('all')
-  const [ownership, setOwnership] = useState<Ownership>('all')
-  const [sort, setSort] = useState<Sort>('name-asc')
-  const [page, setPage] = useState(1)
+  const [search, setSearch] = useRemembered('collection.search', '', isString, 'session')
+  const [category, setCategory] = useRemembered<ItemCategory | 'all'>('collection.category', 'all', oneOf(categories.map(entry => entry.value)))
+  const [ownership, setOwnership] = useRemembered<Ownership>('collection.ownership', 'all', oneOf(OWNERSHIPS))
+  const [sort, setSort] = useRemembered<Sort>('collection.sort', 'name-asc', oneOf(sortOptions.map(option => option.value)))
+  const [page, setPage] = useRemembered('collection.page', 1, isPageNumber, 'session')
+  const [spareOnly, setSpareOnly] = useRemembered('collection.spare', false, isBoolean)
+  const [unequippedOnly, setUnequippedOnly] = useRemembered('collection.unequipped', false, isBoolean)
+  const [unrankedOnly, setUnrankedOnly] = useRemembered('collection.unranked', false, isBoolean)
+  const [minPrice, setMinPrice] = useRemembered('collection.minPrice', 0, oneOf(MIN_PRICE_STEPS))
+  const equipKnown = ownershipVerified && hasEquipData(view.collection.items)
+  // The filter reads these, never the toggles: a toggle hidden by an access change, or by a
+  // snapshot that predates the count, must stop filtering in the same render it disappears. The
+  // toggles themselves are remembered rather than cleared, so they come back pressed with the data.
+  const spare = spareOnly && ownershipVerified
+  const unequipped = unequippedOnly && equipKnown
   const {
     masteryEligible,
     mastered,
@@ -601,9 +641,13 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
       .filter(item => category === 'all' || item.category === category)
       .filter(item => ownership === 'all'
         || (ownership === 'owned' && item.quantity > 0)
-        || (ownership === 'mastered' && item.mastered)
+        || (ownership === 'mastered' && (item.mastered || item.item_mastered === true))
         || (ownership === 'missing' && item.quantity === 0)
         || (ownership === 'tradeable' && item.platinum !== undefined))
+      .filter(item => !spare || item.quantity >= 2)
+      .filter(item => !unequipped || hasUnequippedCopy(item))
+      .filter(item => !unrankedOnly || isUnrankedUpgrade(item))
+      .filter(item => meetsMinPrice(item, minPrice))
       .toSorted((left, right) => sort === 'quantity-desc'
         ? right.quantity - left.quantity || left.name.localeCompare(right.name)
         : sort === 'category-asc'
@@ -614,37 +658,49 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
               ? (right.platinum ?? -1) - (left.platinum ?? -1) || left.name.localeCompare(right.name)
               : sort === 'ducats-desc'
                 ? (right.ducats ?? -1) - (left.ducats ?? -1) || left.name.localeCompare(right.name)
-                : left.name.localeCompare(right.name))
-  }, [view.collection.items, search, category, ownership, sort])
+                : sort === 'ducat-ratio-desc'
+                  ? ducatRatioRank(right) - ducatRatioRank(left) || (right.ducats ?? -1) - (left.ducats ?? -1) || left.name.localeCompare(right.name)
+                  : left.name.localeCompare(right.name))
+  }, [view.collection.items, search, category, ownership, spare, unequipped, unrankedOnly, minPrice, sort])
   const totalPages = pageCount(filtered.length)
   const currentPage = clampPage(page, filtered.length)
   const visibleItems = pageItems(filtered, currentPage)
   const firstResult = filtered.length ? (currentPage - 1) * COLLECTION_PAGE_SIZE + 1 : 0
   const lastResult = Math.min(currentPage * COLLECTION_PAGE_SIZE, filtered.length)
-  // What the refresh can *attempt*, not what already has a number. A relic is priced only if some
-  // dump in the last month saw it trade, so a thinly-traded one is unpriced, and excluding unpriced
-  // items would close the manual path against exactly the items that need it. `priceable` is the backend's own answer to "can warframe.market be asked about
-  // this": it drops every name the price table cannot resolve, so counting owned items instead
-  // promised prices for items no request was ever going to be made for. Quantity 0 is not owned and
-  // is never priceable.
-  const pricableVisibleIds = visibleItems.filter(item => item.priceable).map(item => item.id)
   // One readout for the whole page, published by the backend rather than counted here: it is the
   // party that knows the total, and every pass comes out of one rate-limited budget, so a second
   // counter would be describing one queue twice.
   const inProgress = view.collection.pricing ?? null
+  // What is on screen still showing a dump price. Once the player has rested on a page for a
+  // moment it is priced live without being asked. `priceable` is the backend's own answer to "can
+  // warframe.market be asked about this", so unowned and unresolvable rows are never sent. Each set
+  // is tried once: what comes back unpriced (nobody selling, or the market unreachable) keeps
+  // `live` false, and re-sending the same page would only loop on it.
+  const uncheckedVisibleIds = visibleItems.filter(item => item.priceable && !item.live).map(item => item.id)
+  const uncheckedKey = uncheckedVisibleIds.join('\n')
+  const autoPriced = useRef(new Set<string>())
+  const passRunning = pricing || inProgress !== null
+  useEffect(() => {
+    if (!uncheckedKey || passRunning || autoPriced.current.has(uncheckedKey)) return
+    const timer = setTimeout(() => {
+      autoPriced.current.add(uncheckedKey)
+      onPriceLive(uncheckedKey.split('\n'))
+    }, AUTO_PRICE_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [uncheckedKey, passRunning, onPriceLive])
   const dumpDate = view.health.collection_prices.last_success
   // You can only sort by what is on screen. Hiding ducat values retires their sort with them, and
   // the pressed chip moves to platinum in plain sight rather than leaving an invisible criterion
   // reorder the register.
-  const sorts = showDucats ? sortOptions : sortOptions.filter(option => option.value !== 'ducats-desc')
+  const sorts = showDucats ? sortOptions : sortOptions.filter(option => option.metal !== 'ducat')
   useEffect(() => {
-    if (!showDucats && sort === 'ducats-desc') setSort('platinum-desc')
-  }, [showDucats, sort])
+    if (!showDucats && (sort === 'ducats-desc' || sort === 'ducat-ratio-desc')) setSort('platinum-desc')
+  }, [showDucats, sort, setSort])
   useEffect(() => {
     if (!ownershipVerified) setOwnership('all')
-  }, [ownershipVerified])
-  useEffect(() => setPage(1), [search, category, ownership, sort])
-  useEffect(() => setPage(value => clampPage(value, filtered.length)), [filtered.length])
+  }, [ownershipVerified, setOwnership])
+  useResetOnChange(() => setPage(1), [search, category, ownership, spare, unequipped, unrankedOnly, minPrice, sort])
+  useEffect(() => setPage(value => clampPage(value, filtered.length)), [filtered.length, setPage])
 
   return <section className="page" aria-labelledby="collection-title">
     <div className="mark-head">
@@ -732,28 +788,39 @@ function CollectionPage({ view, effectiveMode, pricing, onPriceLive, priceFloor,
           from the left. An engraved hairline is what this system already uses to divide the sheet,
           so a reading struck into one needs no new component and nothing that spins. */}
       <div className="register-bar" style={inProgress ? { '--assay-progress': inProgress.done / Math.max(inProgress.total, 1) } as CSSProperties : undefined}>
-        {ownershipVerified && <div className="tally" role="group" aria-label="Ownership filters">
-          {(['all', 'owned', 'mastered', 'missing', 'tradeable'] as const).map(filter => <button
-            type="button"
-            key={filter}
-            aria-pressed={ownership === filter}
-            onClick={() => setOwnership(filter)}
-          >{filter[0].toUpperCase() + filter.slice(1)}</button>)}
-        </div>}
+        <div className="register-filters">
+          {ownershipVerified && <div className="tally" role="group" aria-label="Ownership filters">
+            {OWNERSHIPS.map(filter => <button
+              type="button"
+              key={filter}
+              aria-pressed={ownership === filter}
+              onClick={() => setOwnership(filter)}
+            >{filter[0].toUpperCase() + filter.slice(1)}</button>)}
+          </div>}
+          {/* Each narrows on its own and they combine. A seller's view is 2+ copies, Unequipped
+              and a minimum price, and pressing one never releases another. */}
+          <div className="tally" role="group" aria-label="Copy filters">
+            {ownershipVerified && <button type="button" aria-pressed={spareOnly} onClick={() => setSpareOnly(value => !value)}>2+ copies</button>}
+            {equipKnown && <button type="button" aria-pressed={unequippedOnly} onClick={() => setUnequippedOnly(value => !value)}>Unequipped</button>}
+            <button type="button" aria-pressed={unrankedOnly} onClick={() => setUnrankedOnly(value => !value)}>Unranked</button>
+          </div>
+          <div className="min-price-slot" role="group" aria-label="Minimum price">
+            <span>Min price</span>
+            <div className="tally">
+              {MIN_PRICE_STEPS.map(step => <button
+                type="button"
+                key={step}
+                aria-pressed={minPrice === step}
+                onClick={() => setMinPrice(step)}
+              >{step ? <><MetalMark metal="plat" alt="platinum "/>{step}+</> : 'Any'}</button>)}
+            </div>
+          </div>
+        </div>
         <div className="provenance-row">
           <div className="register-status">
             <span className="register-line">{dumpDate ? `Prices from the ${shortDumpDate(dumpDate)} market summary` : 'No price summary loaded yet'}</span>
             <span className="register-line">{firstResult}–{lastResult} of {filtered.length}</span>
             {inProgress && <span className="register-line pricing" role="status">Checking live prices · {inProgress.done} of {inProgress.total}</span>}
-          {/* Live prices come from the market dump and explicit price checks, neither of which
-              reads the game or needs verified ownership: Companion and Overlay keep valuation.
-              Selling still needs Full, and that gate lives on the sell controls, not here. */}
-          <button
-            type="button"
-            className="stamp"
-            disabled={pricing || inProgress !== null || pricableVisibleIds.length === 0}
-            onClick={() => onPriceLive(pricableVisibleIds)}
-          ><span>{pricing || inProgress ? 'Pricing…' : `Price these ${pricableVisibleIds.length}`}</span></button>
           </div>
         </div>
       </div>
@@ -790,10 +857,10 @@ const masterySortOptions: Array<{ value: MasterySort; label: string }> = [
 ]
 
 function MasteryPage({ view, onSell, onUpdate, ordersBusy }: { view: AppView; onSell: SellHandler; onUpdate: UpdateHandler; ordersBusy: boolean }) {
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState<ItemCategory | 'all'>('all')
-  const [sort, setSort] = useState<MasterySort>('arsenal-first')
-  const [page, setPage] = useState(1)
+  const [search, setSearch] = useRemembered('mastery.search', '', isString, 'session')
+  const [category, setCategory] = useRemembered<ItemCategory | 'all'>('mastery.category', 'all', oneOf(categories.map(entry => entry.value)))
+  const [sort, setSort] = useRemembered<MasterySort>('mastery.sort', 'arsenal-first', oneOf(masterySortOptions.map(option => option.value)))
+  const [page, setPage] = useRemembered('mastery.page', 1, isPageNumber, 'session')
   const { available, items, totals } = view.mastery
   const mastered = totals.reduce((sum, entry) => sum + entry.mastered, 0)
   const total = totals.reduce((sum, entry) => sum + entry.total, 0)
@@ -814,8 +881,8 @@ function MasteryPage({ view, onSell, onUpdate, ordersBusy }: { view: AppView; on
   const visibleItems = pageItems(filtered, currentPage)
   const firstResult = filtered.length ? (currentPage - 1) * COLLECTION_PAGE_SIZE + 1 : 0
   const lastResult = Math.min(currentPage * COLLECTION_PAGE_SIZE, filtered.length)
-  useEffect(() => setPage(1), [search, category, sort])
-  useEffect(() => setPage(value => clampPage(value, filtered.length)), [filtered.length])
+  useResetOnChange(() => setPage(1), [search, category, sort])
+  useEffect(() => setPage(value => clampPage(value, filtered.length)), [filtered.length, setPage])
 
   return <section className="page" aria-labelledby="mastery-title">
     <div className="mark-head">
@@ -928,8 +995,12 @@ function CollectionEntry({ item, ownershipVerified, showDucats, listedOrder, sel
             ? <span className="hallmark absent">Missing</span>
             : <span className="hallmark owned">Owned ×{item.quantity}</span>
           : null}
+        {/* Under Owned, a step behind it: how many of those copies sit in a build. None in use and
+            not known are both no mark, so the mark only ever states a count that was read. */}
+        {ownershipVerified && (item.equipped ?? 0) > 0 && <span className="hallmark">Equipped ×{item.equipped}</span>}
         {rankLabel(item) && <span className={`hallmark rank${atMaxRank(item) ? ' maxed' : ''}`}>{rankLabel(item)}</span>}
         {ownershipVerified && item.mastered && <span className="hallmark mastered">Mastered</span>}
+        {ownershipVerified && item.item_mastered && <span className="hallmark mastered">Item mastered</span>}
         {listedOrder && <span className="hallmark">{listedLabel(listedOrder, item.quantity)}</span>}
         {item.platinum !== undefined && <span className={`price${item.live ? ' live' : ''}`}>
           <MetalMark metal="plat" alt="platinum "/>
@@ -1221,7 +1292,7 @@ function MasteryMarksSetting() {
   return <div className="setting">
     <div>
       <h3>Mastery marks on overlays</h3>
-      <p className="prose">On the reward screen, each Prime part's slip says whether the item it builds is mastered, built, in the foundry or still unmastered, and draws the set behind an unmastered one. On the Ducat Kiosk, a part of an item you have not mastered, built or started building gets a strip with its price. Full access shows every mark after an inventory sync; Overlay access shows only what you have already mastered.</p>
+      <p className="prose">On the reward screen, each Prime part's slip says whether the item it builds is mastered, built, in the foundry or still unmastered, and draws the set behind an unmastered one. Full access shows every mark after an inventory sync; Overlay access shows only what you have already mastered.</p>
     </div>
     <button
       type="button"

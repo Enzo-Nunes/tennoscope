@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use app_core::{MarketAccountView, OrderStatus, ReconciledOrder, reconcile_orders};
 use local_store::SnapshotMeta;
+use warframe_acquisition::CatalogIndex;
 use warframe_domain::Collection;
 use warframe_market::{
     CredentialBacking, CredentialStore, Listing, MarketError, MarketItems, MarketToken,
@@ -133,6 +134,7 @@ pub fn account_view(
     collection: &Collection,
     snapshot: Option<&SnapshotMeta>,
     now: &str,
+    recipes: Option<&CatalogIndex>,
 ) -> Result<MarketAccountView, MarketError> {
     let Some(token) = session.token()? else {
         return Ok(MarketAccountView::unlinked());
@@ -144,7 +146,7 @@ pub fn account_view(
             // Stored before the view is built, so a renewal survives even if something later in
             // this function fails.
             session.adopt(renewed)?;
-            let reconciled = reconcile_orders(&orders, &items, collection, snapshot);
+            let reconciled = reconcile_orders(&orders, &items, collection, snapshot, recipes);
             Ok(
                 MarketAccountView::linked(backing, reconciled, now.to_owned())
                     .with_listable(&items, collection),
@@ -267,6 +269,9 @@ pub fn authorize_removal(view: &MarketAccountView, order_id: &str) -> Result<(),
 /// names a row the collection holds, and the count does not exceed that row's holding. Only the
 /// price is left to the market crate's own bounds, because a fair price is the player's alone to
 /// choose.
+///
+/// A set names no row. Its bound is the number of whole sets its parts complete, which the
+/// reconciliation already worked out against the same collection and carries on the order.
 pub fn authorize_update(
     view: &MarketAccountView,
     collection: &Collection,
@@ -276,6 +281,16 @@ pub fn authorize_update(
     let entry = find_order(view, order_id).ok_or(ORDER_NOT_HELD)?;
     if entry.order.kind != OrderKind::Sell {
         return Err(ORDER_NOT_A_SELL);
+    }
+    if let Some(sets) = entry.sets_held.filter(|_| entry.row_id.is_none()) {
+        if sets == 0 {
+            return Err(ITEM_NOT_OWNED);
+        }
+        return if quantity > sets {
+            Err(ORDER_EXCEEDS_HOLDING)
+        } else {
+            Ok(())
+        };
     }
     let row_id = entry.row_id.as_deref().ok_or(ORDER_NOT_ON_A_ROW)?;
     let held = collection

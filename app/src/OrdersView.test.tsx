@@ -345,6 +345,33 @@ describe('editing a listing from its row', () => {
     expect(screen.queryByRole('button', { name: /edit listing/i })).toBeNull()
   })
 
+  /// A set names no row, but once its parts are counted it has a holding: the whole sets they
+  /// complete. That is the form's bound, and a set whose parts complete none offers no edit.
+  it('edits a set listing up to the sets its parts complete', async () => {
+    const user = userEvent.setup()
+    const set = (id: string, sets: number): ReconciledOrder =>
+      ({ ...entry(id, { state: 'ok' }), name: 'Larkspur Prime Set', is_set: true, sets_held: sets })
+    render(
+      <OrdersView
+        account={account({ orders: [set('s1', 2), set('s0', 0)] })}
+        {...handlers}
+        busy={false}
+        error={null}
+      />,
+    )
+
+    const edits = screen.getAllByRole('button', { name: /edit listing/i })
+    expect(edits).toHaveLength(1)
+    await user.click(edits[0])
+    expect(screen.getByRole('form', { name: 'Edit listing for Larkspur Prime Set' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Quantity')).toHaveAttribute('max', '2')
+    await user.clear(screen.getByLabelText('Quantity'))
+    await user.type(screen.getByLabelText('Quantity'), '2')
+    await user.click(screen.getByRole('button', { name: /save listing/i }))
+
+    expect(handlers.onUpdate).toHaveBeenCalledWith('s1', 12, 2)
+  })
+
   /** The picker offers the same collection the cards do, and a row that is already listed is edited
    * there for the same reason it is edited from the card: the market allows one sell order per
    * item, and a second create would be refused after the request. */

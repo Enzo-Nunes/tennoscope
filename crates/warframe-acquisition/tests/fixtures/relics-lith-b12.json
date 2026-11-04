@@ -1,0 +1,234 @@
+[
+  {
+    "uniqueName": "/Lotus/Types/Game/Projections/T1VoidProjectionProteaIvaraVaultABronze",
+    "name": "Lith B12 Intact",
+    "type": "Relic",
+    "category": "Relics",
+    "tradable": true,
+    "rewards": [
+      {
+        "chance": 2,
+        "item": {
+          "name": "Baza Prime Stock",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/WeaponParts/BazaPrimeStock"
+        },
+        "rarity": "Rare"
+      },
+      {
+        "chance": 11,
+        "item": {
+          "name": "Ivara Prime Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/IvaraPrimeBlueprint"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 11,
+        "item": {
+          "name": "Velox Prime Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/VeloxPrimeBlueprint"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 25.33,
+        "item": {
+          "name": "Aksomati Prime Receiver",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/WeaponParts/AksomatiPrimeReceiver"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 25.33,
+        "item": {
+          "name": "Braton Prime Barrel",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/WeaponParts/BratonPrimeBarrel"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 25.33,
+        "item": {
+          "name": "Forma Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/Components/FormaBlueprint"
+        },
+        "rarity": "Uncommon"
+      }
+    ],
+    "vaulted": true
+  },
+  {
+    "uniqueName": "/Lotus/Types/Game/Projections/T1VoidProjectionProteaIvaraVaultAGold",
+    "name": "Lith B12 Flawless",
+    "type": "Relic",
+    "category": "Relics",
+    "tradable": true,
+    "rewards": [
+      {
+        "chance": 6,
+        "item": {
+          "name": "Baza Prime Stock",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/WeaponParts/BazaPrimeStock"
+        },
+        "rarity": "Rare"
+      },
+      {
+        "chance": 17,
+        "item": {
+          "name": "Ivara Prime Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/IvaraPrimeBlueprint"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 17,
+        "item": {
+          "name": "Velox Prime Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/VeloxPrimeBlueprint"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 20,
+        "item": {
+          "name": "Aksomati Prime Receiver",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/WeaponParts/AksomatiPrimeReceiver"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 20,
+        "item": {
+          "name": "Braton Prime Barrel",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/WeaponParts/BratonPrimeBarrel"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 20,
+        "item": {
+          "name": "Forma Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/Components/FormaBlueprint"
+        },
+        "rarity": "Uncommon"
+      }
+    ],
+    "vaulted": true
+  },
+  {
+    "uniqueName": "/Lotus/Types/Game/Projections/T1VoidProjectionProteaIvaraVaultAPlatinum",
+    "name": "Lith B12 Radiant",
+    "type": "Relic",
+    "category": "Relics",
+    "tradable": true,
+    "rewards": [
+      {
+        "chance": 10,
+        "item": {
+          "name": "Baza Prime Stock",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/WeaponParts/BazaPrimeStock"
+        },
+        "rarity": "Rare"
+      },
+      {
+        "chance": 20,
+        "item": {
+          "name": "Ivara Prime Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/IvaraPrimeBlueprint"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 20,
+        "item": {
+          "name": "Velox Prime Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/VeloxPrimeBlueprint"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 16.67,
+        "item": {
+          "name": "Aksomati Prime Receiver",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/WeaponParts/AksomatiPrimeReceiver"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 16.67,
+        "item": {
+          "name": "Braton Prime Barrel",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/WeaponParts/BratonPrimeBarrel"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 16.67,
+        "item": {
+          "name": "Forma Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/Components/FormaBlueprint"
+        },
+        "rarity": "Uncommon"
+      }
+    ],
+    "vaulted": true
+  },
+  {
+    "uniqueName": "/Lotus/Types/Game/Projections/T1VoidProjectionProteaIvaraVaultASilver",
+    "name": "Lith B12 Exceptional",
+    "type": "Relic",
+    "category": "Relics",
+    "tradable": true,
+    "rewards": [
+      {
+        "chance": 4,
+        "item": {
+          "name": "Baza Prime Stock",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/WeaponParts/BazaPrimeStock"
+        },
+        "rarity": "Rare"
+      },
+      {
+        "chance": 13,
+        "item": {
+          "name": "Ivara Prime Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/IvaraPrimeBlueprint"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 13,
+        "item": {
+          "name": "Velox Prime Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/VeloxPrimeBlueprint"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 23.33,
+        "item": {
+          "name": "Aksomati Prime Receiver",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/WeaponParts/AksomatiPrimeReceiver"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 23.33,
+        "item": {
+          "name": "Braton Prime Barrel",
+          "uniqueName": "/Lotus/Types/Recipes/Weapons/WeaponParts/BratonPrimeBarrel"
+        },
+        "rarity": "Uncommon"
+      },
+      {
+        "chance": 23.33,
+        "item": {
+          "name": "Forma Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/Components/FormaBlueprint"
+        },
+        "rarity": "Uncommon"
+      }
+    ],
+    "vaulted": true
+  }
+]

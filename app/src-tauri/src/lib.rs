@@ -31,11 +31,6 @@ use warframe_acquisition::LinuxProc as GameMemory;
 use warframe_acquisition::WindowsProc as GameMemory;
 
 mod access;
-mod kiosk_geometry;
-mod kiosk_log;
-mod kiosk_ocr;
-mod kiosk_scroll;
-mod kiosk_view;
 #[cfg(target_os = "linux")]
 pub mod linux_renderer;
 pub mod market_account;
@@ -55,11 +50,7 @@ mod reward_source;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod update;
 pub use access::{AccessMode, AccessPolicy};
-pub use kiosk_ocr::{BasketRow, GridCell};
-pub use kiosk_view::{KioskState, KioskView};
-pub use overlay_window::{
-    OverlayGeometry, WindowRect, kiosk_overlay_geometry, placement_notice, reward_overlay_geometry,
-};
+pub use overlay_window::{OverlayGeometry, WindowRect, placement_notice, reward_overlay_geometry};
 pub use preferences::Preferences;
 pub use reward_capture::x11::{largest_warframe_window, warframe_window_from_xwininfo_tree};
 pub use reward_log::{RewardLogEvent, RewardLogMachine};
@@ -1036,6 +1027,12 @@ async fn refresh_inventory(state: State<'_, SharedRuntime>) -> Result<AppView, S
 /// What comes back is written into the persisted price table, not left in the 15-minute live
 /// cache. A price the player deliberately asked for is the best number the app has for that item,
 /// and letting it expire back to a day-old figure would discard a request they spent.
+///
+/// The Collection page asks for this by itself when a page of items comes into view; there is no
+/// manual control. So the politeness lives here rather than with the player: only items
+/// warframe.market has not already answered about against today's dump (a price or no sellers),
+/// and not in the live cache, are asked about. Each item costs at most one request a dump day
+/// however often the page is visited.
 #[tauri::command]
 async fn refresh_prices(
     item_ids: Vec<String>,
@@ -1047,16 +1044,22 @@ async fn refresh_prices(
             let runtime = shared
                 .lock()
                 .map_err(|_| "application state is unavailable".to_owned())?;
-            (
-                runtime
-                    .core
-                    .market_names_for(&item_ids)
-                    .map_err(|_| "collection items could not be resolved".to_owned())?,
-                runtime.live_prices.clone(),
-                runtime.app_data.clone(),
-            )
+            let mut names = runtime
+                .core
+                .market_names_for(&item_ids)
+                .map_err(|_| "collection items could not be resolved".to_owned())?;
+            let table = runtime.core.collection_prices();
+            names.retain(|name| {
+                runtime.live_prices.get(name).is_none()
+                    && !table
+                        .as_ref()
+                        .is_some_and(|table| table.has_been_checked(name))
+            });
+            (names, runtime.live_prices.clone(), runtime.app_data.clone())
         };
-        if let Some(market) = warframe_acquisition::WarframeMarketHttp::new() {
+        if !names.is_empty()
+            && let Some(market) = warframe_acquisition::WarframeMarketHttp::new()
+        {
             let (outcome, unpriced) = warm_with_progress(&shared, &market, &names, &cache);
             let persisted = store_checked_prices(
                 &shared,
@@ -1189,6 +1192,7 @@ fn publish_account(shared: &SharedRuntime) -> Result<AppView, String> {
         cached_items,
         collection,
         snapshot,
+        recipes,
         inventory_evidence_available,
         generation,
     ) = {
@@ -1222,6 +1226,7 @@ fn publish_account(shared: &SharedRuntime) -> Result<AppView, String> {
             runtime.market.cached_items(),
             collection,
             snapshot,
+            runtime.core.mastery_catalog(),
             inventory_evidence_available,
             runtime.market.generation(),
         )
@@ -1260,6 +1265,7 @@ fn publish_account(shared: &SharedRuntime) -> Result<AppView, String> {
     let evidence = inventory_evidence_available.then_some(InventoryEvidence {
         collection: &collection,
         snapshot: snapshot.as_ref(),
+        recipes: recipes.as_deref(),
     });
     let outcome = fetch_account(&transport, &token, backing, cached_items, evidence, &now);
 
@@ -1313,6 +1319,8 @@ struct FetchedAccount {
 struct InventoryEvidence<'a> {
     collection: &'a warframe_domain::Collection,
     snapshot: Option<&'a SnapshotMeta>,
+    /// The recipe index a set listing is judged through, once the catalogue has loaded.
+    recipes: Option<&'a warframe_acquisition::CatalogIndex>,
 }
 
 /// The network part of `publish_account`, done with no runtime lock held.
@@ -1334,12 +1342,17 @@ fn fetch_account(
     match warframe_market::list_mine(transport, token) {
         Ok((orders, renewed)) => {
             let empty_collection = warframe_domain::Collection::default();
-            let (evidence_collection, evidence_snapshot) = evidence
-                .map_or((&empty_collection, None), |evidence| {
-                    (evidence.collection, evidence.snapshot)
+            let (evidence_collection, evidence_snapshot, recipes) = evidence
+                .map_or((&empty_collection, None, None), |evidence| {
+                    (evidence.collection, evidence.snapshot, evidence.recipes)
                 });
-            let reconciled =
-                app_core::reconcile_orders(&orders, &items, evidence_collection, evidence_snapshot);
+            let reconciled = app_core::reconcile_orders(
+                &orders,
+                &items,
+                evidence_collection,
+                evidence_snapshot,
+                recipes,
+            );
             let mut view = app_core::MarketAccountView::linked(backing, reconciled, now.to_owned());
             if let Some(evidence) = evidence.as_ref() {
                 view = view.with_listable(&items, evidence.collection);
@@ -1798,10 +1811,19 @@ fn apply_outcome(
     if !inventory_refresh_authorized(&runtime.setup, &runtime.transition) {
         return Err("inventory refresh requires Full access mode".to_owned());
     }
-    runtime
+    let view = runtime
         .core
         .refresh_from(&CompletedOutcome(outcome))
-        .map_err(|_| "inventory health could not be applied".to_owned())
+        .map_err(|_| "inventory health could not be applied".to_owned())?;
+    // The held orders are judged again against the read just stored, with the item table they were
+    // fetched against; before any fetch there is no table and nothing held to judge.
+    match runtime.market.cached_items() {
+        Some(items) => runtime
+            .core
+            .rejudge_market_orders(&items)
+            .map_err(|_| "application view is unavailable".to_owned()),
+        None => Ok(view),
+    }
 }
 
 fn initialize_runtime(app: &AppHandle) -> Result<SharedRuntime, Box<dyn std::error::Error>> {
@@ -2046,14 +2068,6 @@ fn hide_reward_overlay(app: AppHandle) {
     overlay_window::hide_reward_overlay(&app);
 }
 
-/// The kiosk window pulls the latest epoch through this rather than receiving the payload in the
-/// event, so a missed `kiosk-updated` (window still loading, webview busy) costs one fetch
-/// instead of a stale overlay until the next poll.
-#[tauri::command]
-fn get_kiosk_view(kiosk: State<'_, KioskState>) -> Option<KioskView> {
-    kiosk.get()
-}
-
 /// The Relics tab's plan for the settings it shows: currency and squad size.
 ///
 /// The first call starts loading the drop tables and answers `loading`; the tab asks again until
@@ -2136,7 +2150,7 @@ pub fn run() {
         std::panic::set_hook(Box::new(move |info| {
             let thread = std::thread::current();
             log::error!(
-                "[DEBUG-kiosk] panic in thread {}: {info}",
+                "[DEBUG] panic in thread {}: {info}",
                 thread.name().unwrap_or("<unnamed>")
             );
             default_hook(info);
@@ -2240,9 +2254,6 @@ pub fn run() {
                 .map(|state| current_setup_status(state.setup.clone(), state.game_running))
                 .unwrap_or_default();
             app.manage(runtime);
-            // The kiosk window's whole IPC surface: `get_kiosk_view` pulls whatever the poller
-            // last published, so the cell exists from the start, empty until a kiosk opens.
-            app.manage(kiosk_view::KioskState::default());
             app.manage(relic_plan::RelicPlanState::default());
             if let Some(access_mode) = startup.access_mode {
                 start_collection_prices(Arc::clone(app.state::<SharedRuntime>().inner()));
@@ -2290,7 +2301,6 @@ pub fn run() {
             load_fake_session,
             show_reward_overlay,
             hide_reward_overlay,
-            get_kiosk_view,
             get_relic_plan,
             market_status,
             market_sign_in,
@@ -2313,68 +2323,6 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-#[cfg(test)]
-mod live_bench {
-    use crate::{kiosk_ocr, reward_capture::GameCapture};
-    use image::GenericImageView;
-    use std::time::Instant;
-
-    /// Live-machine cost of one whole kiosk pass. Ignored by default: needs the game running.
-    #[test]
-    #[ignore]
-    fn bench_live_kiosk_pass() {
-        let candidates: Vec<warframe_acquisition::RewardCatalogEntry> = std::iter::repeat_n(
-            warframe_acquisition::RewardCatalogEntry {
-                name: "Fulmin Prime Receiver".into(),
-                ducats: 100,
-            },
-            12,
-        )
-        .collect();
-
-        let t0 = Instant::now();
-        let frame = GameCapture::new()
-            .capture_candidates()
-            .expect("capture")
-            .into_iter()
-            .next()
-            .expect("game capture candidate")
-            .image;
-        println!("capture: {:?}", t0.elapsed());
-
-        let (w, h) = frame.dimensions();
-        println!("frame: {w}x{h}");
-
-        let t1 = Instant::now();
-        let dy: i32 = std::env::var("KIOSK_BENCH_DY")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
-        println!("bench dy: {dy}");
-        let cells = kiosk_ocr::read_grid(&frame, &candidates, dy);
-        println!(
-            "read_grid (24 crops): {:?} -> {} cells",
-            t1.elapsed(),
-            cells.len()
-        );
-
-        let t2 = Instant::now();
-        let rows = kiosk_ocr::read_basket(&frame, &candidates);
-        for row in &rows {
-            println!(
-                "  basket row {} = {:?} score {:.2}",
-                row.index, row.name, row.score
-            );
-        }
-        println!(
-            "read_basket (8 crops): {:?} -> {} rows",
-            t2.elapsed(),
-            rows.len()
-        );
-        println!("TOTAL pass: {:?}", t0.elapsed());
-    }
 }
 
 #[cfg(test)]
@@ -2969,6 +2917,7 @@ mod tests {
             let evidence = inventory_evidence_available.then_some(InventoryEvidence {
                 collection: &collection,
                 snapshot: Some(&snapshot),
+                recipes: None,
             });
             fetch_account(
                 &transport,

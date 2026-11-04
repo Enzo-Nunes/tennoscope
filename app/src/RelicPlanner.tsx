@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { MetalMark } from './MetalMark'
+import { isBoolean, isString, oneOf, useRemembered } from './remembered'
 import { getRelicPlan, type AccessMode, type PlanCurrency, type Refinement, type RelicPlanEntry, type RelicPlanRow, type RelicPlanView } from './backend'
 
 const REFINEMENTS: Refinement[] = ['intact', 'exceptional', 'flawless', 'radiant']
@@ -12,8 +13,12 @@ type Era = typeof ERAS[number]
 /** A relic's era is the first word of its name, as in "Axi A1" or "Requiem IV". */
 const eraOf = (relic: string) => relic.slice(0, relic.indexOf(' '))
 
-type SortKey = 'gain' | 'value' | 'radiant'
+type SortKey = 'gain' | 'value' | 'radiant' | 'refinement'
 interface Sort { key: SortKey; descending: boolean }
+
+const SORT_KEYS: SortKey[] = ['gain', 'value', 'radiant', 'refinement']
+const isSort = (value: unknown) => typeof value === 'object' && value !== null
+  && SORT_KEYS.includes((value as Sort).key) && typeof (value as Sort).descending === 'boolean'
 
 function figure(value: number): string {
   return value.toFixed(1)
@@ -30,8 +35,12 @@ function Value({ value, currency, signed }: { value: number; currency: PlanCurre
 
 const entryKey = (entry: RelicPlanEntry) => `${entry.relic}-${entry.refinement}`
 
-/** Compares two entries by one column, larger first. A Radiant entry has no gain and sorts last either way. */
+/** Compares two entries by one column, larger first (Radiant is the largest refinement). A Radiant entry has no gain and sorts last either way. */
 function compare(left: RelicPlanEntry, right: RelicPlanEntry, sort: Sort): number {
+  if (sort.key === 'refinement') {
+    const order = REFINEMENTS.indexOf(right.refinement) - REFINEMENTS.indexOf(left.refinement)
+    return sort.descending ? order : -order
+  }
   if (sort.key === 'gain') {
     if (left.gain_per_100 === null || right.gain_per_100 === null) return Number(left.gain_per_100 === null) - Number(right.gain_per_100 === null)
     const order = right.gain_per_100 - left.gain_per_100
@@ -43,12 +52,12 @@ function compare(left: RelicPlanEntry, right: RelicPlanEntry, sort: Sort): numbe
 }
 
 export function RelicPlanner({ effectiveMode }: { effectiveMode: AccessMode }) {
-  const [currency, setCurrency] = useState<PlanCurrency>('platinum')
-  const [squad, setSquad] = useState(1)
-  const [search, setSearch] = useState('')
-  const [onlyOwned, setOnlyOwned] = useState(true)
-  const [era, setEra] = useState<Era | null>(null)
-  const [sort, setSort] = useState<Sort>({ key: 'gain', descending: true })
+  const [currency, setCurrency] = useRemembered<PlanCurrency>('relics.currency', 'platinum', oneOf(['platinum', 'ducats']))
+  const [squad, setSquad] = useRemembered('relics.squad', 1, oneOf([1, 2, 3, 4]))
+  const [search, setSearch] = useRemembered('relics.search', '', isString, 'session')
+  const [onlyOwned, setOnlyOwned] = useRemembered('relics.only-owned', true, isBoolean)
+  const [era, setEra] = useRemembered<Era | null>('relics.era', null, oneOf([null, ...ERAS]))
+  const [sort, setSort] = useRemembered<Sort>('relics.sort', { key: 'gain', descending: true }, isSort)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [view, setView] = useState<RelicPlanView | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -74,11 +83,15 @@ export function RelicPlanner({ effectiveMode }: { effectiveMode: AccessMode }) {
   const plan = view?.plan ?? null
   const rowsByName = useMemo(() => new Map((plan?.rows ?? []).map(row => [row.name, row])), [plan])
   const needle = search.trim().toLowerCase()
+  /** Relics whose name or any reward's name holds the search, so "citrine" finds every relic with a Citrine Prime part. */
+  const matching = useMemo(() => new Set((plan?.rows ?? [])
+    .filter(row => row.name.toLowerCase().includes(needle) || row.rewards.some(reward => reward.name.toLowerCase().includes(needle)))
+    .map(row => row.name)), [plan, needle])
 
   const entries = useMemo(() => {
-    const shown = (plan?.entries ?? []).filter(entry => (!needle || entry.relic.toLowerCase().includes(needle)) && (!onlyOwned || entry.copies > 0) && (!era || eraOf(entry.relic) === era))
+    const shown = (plan?.entries ?? []).filter(entry => (!needle || matching.has(entry.relic) || entry.relic.toLowerCase().includes(needle)) && (!onlyOwned || entry.copies > 0) && (!era || eraOf(entry.relic) === era))
     return [...shown].sort((left, right) => compare(left, right, sort) || left.relic.localeCompare(right.relic) || REFINEMENTS.indexOf(left.refinement) - REFINEMENTS.indexOf(right.refinement))
-  }, [plan, needle, onlyOwned, era, sort])
+  }, [plan, needle, matching, onlyOwned, era, sort])
 
   const sortBy = (key: SortKey) => setSort(current => current.key === key ? { key, descending: !current.descending } : { key, descending: true })
   const header = (key: SortKey, label: string) => <th aria-sort={sort.key === key ? (sort.descending ? 'descending' : 'ascending') : undefined}>
@@ -88,7 +101,7 @@ export function RelicPlanner({ effectiveMode }: { effectiveMode: AccessMode }) {
   return <section className="page" aria-labelledby="relics-title">
     <div className="mark-head">
       <h1 id="relics-title" className="mark">Relic planner</h1>
-      <p className="prose">What each relic is worth opened as it is and at Radiant, at your squad size. Gain per 100 traces puts every refinement on the same footing: high is where Void Traces buy the most, and at or below zero a relic is best opened as it is.</p>
+      <p className="prose">Each relic's value as it is and at Radiant, for your squad. Gain per 100 traces shows where Void Traces pay off most.</p>
     </div>
 
     <div className="register">
@@ -116,8 +129,8 @@ export function RelicPlanner({ effectiveMode }: { effectiveMode: AccessMode }) {
         <label className="relic-check"><input type="checkbox" checked={onlyOwned} onChange={event => setOnlyOwned(event.target.checked)}/>Only owned</label>
         <label className="search-slot">
           <svg className="punch-glyph" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter"><circle cx="10.5" cy="10.5" r="7"/><path d="M15.5 15.5 22 22"/></svg>
-          <span className="sr-only">Search relics</span>
-          <input type="search" aria-label="Search relics" placeholder="Search relics…" value={search} onChange={event => setSearch(event.target.value)}/>
+          <span className="sr-only">Search relics or rewards</span>
+          <input type="search" aria-label="Search relics or rewards" placeholder="Search relics or rewards…" value={search} onChange={event => setSearch(event.target.value)}/>
         </label>
       </div>
 
@@ -131,7 +144,7 @@ export function RelicPlanner({ effectiveMode }: { effectiveMode: AccessMode }) {
             <table className="relic-table" aria-label="Relics">
               <thead><tr>
                 <th>Relic</th>
-                <th>Refinement</th>
+                {header('refinement', 'Refinement')}
                 <th>Owned</th>
                 {header('value', 'Value now')}
                 {header('radiant', 'Value at Radiant')}

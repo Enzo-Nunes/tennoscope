@@ -14,6 +14,61 @@ see the difference.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-04
+
+### Added
+
+- **The Collection tab filters to copies worth selling.** Four filters combine with search,
+  category and the ownership filters. **2+ copies** keeps a row holding at least two copies,
+  counted per rank, because the market prices each rank on its own. **Unequipped** keeps a row
+  with a copy installed in no build, and an **Equipped ×N** mark on the card counts the copies
+  that are. **Unranked** keeps the unranked mods and arcanes, which also hold every rank-0 copy.
+  **Min price** keeps copies priced at 3, 5, 10 or 20 platinum or more, and above Any it drops
+  rows with no price, as Tradeable does. The steps follow one account's held mods, where 328
+  sat at 3-4p and 41 at 20p or more. 2+ copies and Unequipped need Full access, like the
+  quantities they read. Unequipped and the mark appear after the next inventory read, because
+  copies stored before this release were never counted.
+- **The Orders tab checks set listings against the parts you hold.** A set row now says
+  "Parts for 1 of 3 sets" with a Lower to 1 fix, or "Parts missing",
+  instead of always reading Unverifiable. Parts you list on their own count first, so a part
+  listed beside a set it completes is not counted twice. Covers Prime sets and most non-Prime
+  ones (Wraith, Vandal, Sentient and similar); sets the catalogue cannot describe stay
+  Unverifiable.
+- **Set listings can be edited from the Orders tab.** Edit listing appears on a set row once your
+  parts complete at least one set, with the quantity capped at how many they complete.
+- **Non-Prime parts get the "Item mastered" tag.** A Wraith, Vandal or syndicate part, or a
+  non-Prime blueprint, is tagged once the item it builds is mastered, as Prime parts already were.
+- **The Relics tab search also finds relics by what they drop.** Typing an item name, such as
+  "citrine", shows every relic with a matching reward, here every Citrine Prime part. Relic
+  names still match as before.
+- **The Relics tab can sort by refinement.** Click the Refinement header to put Radiant relics
+  first, and again for Intact first, like the value and gain columns.
+- **The reward overlay also shows when only one relic opened.** There is nothing to choose, but
+  the lone card's price, ducats and mastery are shown, without the "Top" marks.
+
+### Removed
+
+- **The Ducat Kiosk overlay is gone.** The platinum figures and Unmastered strips over the
+  in-game kiosk grid, and the sell list total, are no longer drawn. The Collection tab is where
+  to decide what to sell for ducats.
+
+### Fixed
+
+- **The Orders tab updates after each inventory read.** Listings are checked again against the
+  new collection right away, instead of only when the tab is reopened.
+- **The Relics tab lists every relic again.** Relics released since the app's relic data was last
+  updated, such as Lith B12 and Lith L8, were missing even with Only owned unticked: the drop
+  tables came from a fixed old copy of WFCD's relic list (771 relics), and a copy cached once was
+  never fetched again. The tables now come from the live WFCD API (798 relics on 2026-10-26),
+  and the cached copy is refreshed once it is a week old, falling back to it while offline. The
+  reward screen's relic list gets the same refresh.
+- **Starting Warframe no longer shows "Attention needed: inventory authorization was not
+  found".** The inventory scan that runs as the game appears always lands before login, when
+  the game holds no authorization yet, and the app then waited for the next "Inventory sync
+  done" in EE.log, sometimes a whole mission later. The status now reads as waiting for login,
+  and the scan is retried every 30 seconds (at most ten times per launch) until it succeeds.
+  A scan that finds nothing makes no request to Digital Extremes.
+
 ## [0.15.0] - 2026-10-26
 
 ### Added
@@ -39,8 +94,8 @@ see the difference.
 - **AppImages can update themselves.** The update panel said TennoScope could not replace its
   own file wherever the AppImage lived, because it tested the running file, which Linux never
   lets a program write to. It now tests the folder, which is what an update actually changes.
-- **The reward overlay no longer covers squadmates' names.** It now sits 15% of the screen
-  height lower (162px at 1080p), scaled to the screen height as before.
+- **The reward overlay no longer covers squadmates' names.** It now starts 90px lower at 1080p
+  (620px instead of 530px), scaled to the screen height as before.
 - **The full test suite passes on every tesseract build.** The 16:10 reward-geometry test
   asserted every card read at >= 0.9, which the combined legacy+LSTM `tessdata` that Arch and
   Fedora ship misses by one character on `2X Forma Blueprint` (0.875), so those packages had to
@@ -842,7 +897,8 @@ First release.
 - Raw inventory responses are validated in memory and are not persisted.
 - No telemetry, no analytics, no remote account, no secret persistence.
 
-[Unreleased]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/Enzo-Nunes/tennoscope/releases/tag/v0.14.0
 [0.13.1]: https://github.com/Deftera186/tennoscope/compare/v0.13.0...v0.13.1
