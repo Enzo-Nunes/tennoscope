@@ -14,6 +14,8 @@ see the difference.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-04
+
 ### Added
 
 - **The Collection tab filters to copies worth selling.** Four filters combine with search,
@@ -895,7 +897,8 @@ First release.
 - Raw inventory responses are validated in memory and are not persisted.
 - No telemetry, no analytics, no remote account, no secret persistence.
 
-[Unreleased]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/Enzo-Nunes/tennoscope/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/Enzo-Nunes/tennoscope/releases/tag/v0.14.0
 [0.13.1]: https://github.com/Deftera186/tennoscope/compare/v0.13.0...v0.13.1
