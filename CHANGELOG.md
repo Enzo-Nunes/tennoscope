@@ -36,8 +36,11 @@ see the difference.
   Unverifiable.
 - **Set listings can be edited from the Orders tab.** Edit listing appears on a set row once your
   parts complete at least one set, with the quantity capped at how many they complete.
-- **Non-Prime parts get the "Item mastered" tag.** A Wraith, Vandal or syndicate part, or a
-  non-Prime blueprint, is tagged once the item it builds is mastered, as Prime parts already were.
+- **The Collection tab's Mastered filter includes parts.** A part or blueprint now counts as
+  mastered once the item it builds, and everything built from it, is mastered, and its card
+  carries an "Item mastered" tag. This covers Prime parts and non-Prime ones (Wraith, Vandal,
+  syndicate parts and non-Prime blueprints). Before, the filter never showed a part. The mastery
+  band still counts equipment only.
 - **The Relics tab search also finds relics by what they drop.** Typing an item name, such as
   "citrine", shows every relic with a matching reward, here every Citrine Prime part. Relic
   names still match as before.
@@ -45,6 +48,23 @@ see the difference.
   first, and again for Intact first, like the value and gain columns.
 - **The reward overlay also shows when only one relic opened.** There is nothing to choose, but
   the lone card's price, ducats and mastery are shown, without the "Top" marks.
+- **The Collection tab prices itself.** Once a page has been in view for about a second, the
+  owned items on it that still show a dump price are priced live on warframe.market. Each item
+  costs at most one paced request per dump day, at the shared 3 requests a second, and nothing
+  off-screen is asked about. The "Price these" button is gone.
+- **The Collection tab can sort by ducats per platinum.** It ranks parts by ducats paid per
+  platinum given up, so the best parts to hand Baro come first. Parts with ducats but no price
+  yet follow the ranked ones.
+- **Each tab keeps its sort, filters and search when switching tabs.** Sorts, filters and
+  toggles also survive a restart; the search text and the page of results last for the session.
+
+### Changed
+
+- **The reward overlay moved up to 620px at 1080p.** 0.15.0's 15% drop (162px) put it too far
+  below the cards; 620px was tuned in game. It still scales with the screen height.
+- **The reward overlay reads the screen only while a reward screen is open.** It used to read
+  every two seconds from relic load to close, which in an endless mission meant OCR between
+  every round. It now starts when EE.log reports the screen open and stops when it closes.
 
 ### Removed
 
@@ -68,6 +88,15 @@ see the difference.
   done" in EE.log, sometimes a whole mission later. The status now reads as waiting for login,
   and the scan is retried every 30 seconds (at most ten times per launch) until it succeeds.
   A scan that finds nothing makes no request to Digital Extremes.
+- **The reward overlay reads cards from the AppImage on Arch.** The AppImage's bundled
+  libjpeg-turbo shadowed the system one, so the system tesseract crashed on every card and each
+  read came back blank. Tesseract now runs without the AppImage's library paths, and a crash is
+  logged instead of read as a blank card.
+- **The reward overlay works when the app starts mid-round.** In an endless mission the next
+  round's relics load minutes before its reward screen, so an app started in between captured
+  nothing. The app now reads the end of EE.log when it attaches and picks up the round under way.
+- **The reward overlay hides when the reward screen goes away.** A failed read could overwrite
+  the pending "screen gone" signal, leaving the overlay up until EE.log logged the close.
 
 ## [0.15.0] - 2026-10-26
 
@@ -94,8 +123,8 @@ see the difference.
 - **AppImages can update themselves.** The update panel said TennoScope could not replace its
   own file wherever the AppImage lived, because it tested the running file, which Linux never
   lets a program write to. It now tests the folder, which is what an update actually changes.
-- **The reward overlay no longer covers squadmates' names.** It now starts 90px lower at 1080p
-  (620px instead of 530px), scaled to the screen height as before.
+- **The reward overlay no longer covers squadmates' names.** It now sits 15% of the screen
+  height lower (162px at 1080p), scaled to the screen height as before.
 - **The full test suite passes on every tesseract build.** The 16:10 reward-geometry test
   asserted every card read at >= 0.9, which the combined legacy+LSTM `tessdata` that Arch and
   Fedora ship misses by one character on `2X Forma Blueprint` (0.875), so those packages had to
